@@ -142,7 +142,9 @@ class HTPBZ2Window(BWindow):
 			if self.rb1.Value():
 				create_compressed_archive(self.list_autol, self.output.Text())
 			else:
-				decompress_archive(input_file, output_dir)
+				paths=self.input.Text().split(",")
+				for path in paths:
+					decompress_archive(path, self.output.Text()+"/"+os.path.splitext(os.path.basename(path))[0])
 		elif msg.what == 191:
 			osdir="/boot/home/Desktop"
 			osfile="/boot/home/Desktop/output.tar.bz2"
@@ -172,7 +174,7 @@ def get_str_md5(txt):
 	return hashlib.md5(txt.encode('utf-8')).hexdigest()
 
 def get_bytes_md5(byt):
-	return hashlib.md5(txt).hexdigest()
+	return hashlib.md5(byt).hexdigest()
 
 def get_endianness():
 	global endianness
@@ -250,12 +252,15 @@ def parallel_compress_file(input_file, output_file, block_size=1024*1024, compre
             f.write(compressed_block)
 
 def extract_tar_with_attributes(tar_file, output_dir):
+	global check_hash
 	with tarfile.open(tar_file, "r") as tar:
 		tar.extractall(output_dir)
 		for member in tar.getmembers():
+			print(member)
 			if member.name.endswith('.attr'):
 				attr_path = os.path.join(output_dir, member.name)
-				original_file = attr_path[:-5]  # Rimuovere '.attr' dal nome del file
+				#original_file = attr_path[:-5]  # Rimuovere '.attr' dal nome del file
+				original_file= attr_path[:-38] #Rimuove sia .attr che .{hash}
 				with open(attr_path, 'r') as f:
 					attr_data = json.load(f)
 					for name, details in attr_data.items():
@@ -335,6 +340,7 @@ def extract_tar_with_attributes(tar_file, output_dir):
 				os.remove(attr_path)
 
 def add_attributes_to_tar(tar, path):
+	global save_hash
 	nf=BNode(path)
 	attributes=attr(nf)
 	if len(attributes)>0:
@@ -410,7 +416,9 @@ def add_attributes_to_tar(tar, path):
 					'value': attr_value
 				}
 		attr_json = json.dumps(attr_data).encode('utf-8')
-		attr_info = tarfile.TarInfo(name=f"{path}.attr")
+		md5attr_json=str(get_bytes_md5(attr_json))
+		print(md5attr_json)
+		attr_info = tarfile.TarInfo(name=f"{path}.{md5attr_json}.attr")
 		attr_info.size = len(attr_json)
 		tar.addfile(attr_info, io.BytesIO(attr_json))
 
