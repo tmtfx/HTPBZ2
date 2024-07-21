@@ -352,9 +352,9 @@ def add_attributes_to_tar(tar, path):
 				attr_value = base64.b64encode(attr_value[0]).decode('utf-8')
 			elif get_type_string(attr_type)=='TIME':#attr_type == 1414090053:#bigtime_t int
 				if save_hash:
-					attr_hash = get_bytes_md5(int(attr_value[0].timestamp() * 1_000_000).to_bytes(8,byteorder='little'))
+					attr_hash = get_bytes_md5(int(attr_value[0].timestamp()).to_bytes(8,byteorder='little')) #* 1000000).to_bytes(8,byteorder='little'))
 				#attr_hash = get_str_md5(str(int(attr_value[0].timestamp() * 1_000_000)))
-				attr_value=int(attr_value[0].timestamp() * 1_000_000)
+				attr_value=int(attr_value[0].timestamp())# * 1000000)
 			elif get_type_string(attr_type)=='CSTR':#attr_type == 1129534546: #string
 				if save_hash:
 					attr_hash = get_str_md5(attr_value[0])
