@@ -1,9 +1,10 @@
+#!/boot/system/bin/python3
 import os,sys
 import tarfile
 import bz2
 import multiprocessing
 from functools import partial
-from Be import BApplication, BWindow, BView, BNode,BRadioButton,BButton,BMessage, window_type, B_NOT_RESIZABLE, B_CLOSE_ON_ESCAPE, B_QUIT_ON_WINDOW_CLOSE, BTextControl, BAlert,BListView, BScrollView,BListItem,BRect, BBox, BFont, InterfaceDefs, BPath, BDirectory, BEntry
+from Be import BApplication, BWindow, BView, BNode,BRadioButton,BButton,BMessage, window_type, B_NOT_RESIZABLE, B_CLOSE_ON_ESCAPE, B_QUIT_ON_WINDOW_CLOSE, BTextControl, BAlert,BListView, BScrollView,BListItem,BStringItem,BTextView,BRect, BBox, BFont, InterfaceDefs, BPath, BDirectory, BEntry,BStringView
 from Be import BFile,BCheckBox
 from Be.FindDirectory import *
 from Be.Alert import alert_type
@@ -11,14 +12,15 @@ from Be.InterfaceDefs import border_style,orientation
 from Be.ListView import list_view_type
 from Be.AppDefs import *
 from Be.View import *
-#from Be.GraphicsDefs import *
+from Be.GraphicsDefs import *
 from Be.Font import be_plain_font, be_bold_font
 from Be import AppDefs
 from Be.FilePanel import *
 from Be.Application import *
-from Be.Font import font_height
+from Be.Font import font_height,B_OUTLINED_FACE,B_ITALIC_FACE
 from Be.Entry import entry_ref, get_ref_for_path
 from Be.StorageDefs import node_flavor
+from Be.TextView import text_run, text_run_array
 import json
 import io
 import base64
@@ -26,6 +28,162 @@ import datetime
 import struct
 import math
 import hashlib
+import configparser
+
+Config=configparser.ConfigParser()
+
+def ConfigSectionMap(section):
+    dict1 = {}
+    options = Config.options(section)
+    for option in options:
+        try:
+            dict1[option] = Config.get(section, option)
+            if dict1[option] == -1:
+                DebugPrint("skip: %s" % option)
+        except:
+            print("exception on %s!" % option)
+            dict1[option] = None
+    return dict1
+
+class ScrollView:
+	HiWhat = 53 #Doppioclick
+	SectionSelection = 54
+
+	def __init__(self, rect, name):
+		self.lv = BListView(rect, name, list_view_type.B_SINGLE_SELECTION_LIST)
+		self.lv.SetResizingMode(B_FOLLOW_TOP_BOTTOM)
+		self.lv.SetSelectionMessage(BMessage(self.SectionSelection))
+		self.lv.SetInvocationMessage(BMessage(self.HiWhat))
+		self.sv = BScrollView(name, self.lv,B_FOLLOW_NONE,0,False,False,border_style.B_FANCY_BORDER)
+		self.sv.SetResizingMode(B_FOLLOW_TOP_BOTTOM)
+
+class AboutView(BView):
+	def __init__(self,frame):
+		BView.__init__(self,frame,"About",8,20000000)
+		bounds=self.Bounds()
+		fon=BFont()
+		fon.SetSize(24)
+		font_height_value=font_height()
+		fon.GetHeight(font_height_value)
+		fon.SetShear(115.0)
+		txt="Haiku Tar-ParallelBZip2"
+		txtw=fon.StringWidth(txt)
+		r=BRect(bounds.Width()/2-txtw/2-4,4,bounds.Width()/2+txtw/2+4,font_height_value.ascent+4)
+		self.name=BStringView(r,"app_name",txt)
+		self.name.SetFont(fon)
+		self.name.SetHighColor(255,0,0,0)
+		self.AddChild(self.name,None)
+		txt="This simple utility compresses and decompresses files and folders in tar.bz2 format, and also adds Haiku-specific attributes to the archive.\nThe BZip2 compression is parallelized."
+		abrect=BRect(4,font_height_value.ascent+8, bounds.Width()-4,bounds.Height()/2-4)
+		inner_ab=BRect(4,4,abrect.Width()-4,abrect.Height()-4)
+		self.AboutText = BTextView(abrect, 'aBOUTTxTView', inner_ab , B_FOLLOW_NONE)
+		self.AboutText.MakeEditable(False)
+		self.AboutText.MakeSelectable(False)
+		fon1=BFont(be_plain_font)
+		fon1.SetSize(14.0)
+		col1=rgb_color()
+		col1.red=10
+		col1.green=200
+		col1.blue=10
+		col1.alpha=200
+		self.AboutText.SetFontAndColor(fon1,B_FONT_ALL,col1)
+		self.AboutText.SetText(txt,None)
+		self.AddChild(self.AboutText,None)
+		perc=BPath()
+		find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
+		ent=BEntry(perc.Path()+"/HTPBZ2")
+		if not ent.Exists():
+			self.Close()
+		else:
+			ent.GetPath(perc)
+			confile=BPath(perc.Path()+'/config.ini',None,False)
+			ent=BEntry(confile.Path())
+			if ent.Exists():
+				Config.read(confile.Path())
+				ver=ConfigSectionMap("About")["version"]
+				status=ConfigSectionMap("About")["status"]
+				rev=ConfigSectionMap("About")["revision"]
+				author="TmTFx"
+				txt="Version: "+ver
+				r=BRect(4,bounds.Height()/2+4,self.StringWidth(txt)+4,font_height_value.ascent+bounds.Height()/2+4)
+				self.version=BStringView(r,"app_ver",txt)
+				self.AddChild(self.version,None)
+				txt="Status: "+status
+				r=BRect(4,font_height_value.ascent+bounds.Height()/2+8,self.StringWidth(txt)+4,font_height_value.ascent*2+bounds.Height()/2+12)
+				self.status=BStringView(r,"app_status",txt)
+				self.AddChild(self.status,None)
+				txt="Rev: "+rev
+				r=BRect(4,font_height_value.ascent*2+bounds.Height()/2+16,self.StringWidth(txt)+4,font_height_value.ascent*3+bounds.Height()/2+20)
+				self.rev=BStringView(r,"app_rev",txt)
+				self.AddChild(self.rev,None)
+				txt="  By TmTFx"
+				fon.GetHeight(font_height_value)
+				fon.SetRotation(20.0)
+				fon.SetShear(90.0)
+				r = BRect(bounds.Width()/2,bounds.Height()/2+8,fon.StringWidth(txt)+bounds.Width()/2+16,bounds.Height()-4)
+				self.author=BStringView(r,"app_auth",txt)
+				self.author.SetFont(fon)
+				self.AddChild(self.author,None)
+				
+class SystemView(BView):
+	def __init__(self,frame):
+		BView.__init__(self,frame,"About",8,20000000)
+		bounds=self.Bounds()
+		
+		self.endianbox=BBox(BRect(4,4,bounds.Width()-4,bounds.Height()/2-4),"endianess_box",0x0202|0x0404,border_style.B_FANCY_BORDER)
+		self.checksumbox=BBox(BRect(4,bounds.Height()/2+4,bounds.Width()-4,bounds.Height()-4),"checksum_box",0x0202|0x0404,border_style.B_FANCY_BORDER)
+		self.AddChild(self.endianbox,None)
+		self.AddChild(self.checksumbox,None)
+		
+
+class SettingsWindow(BWindow):
+	def __init__(self):
+		BWindow.__init__(self, BRect(200,150,800,450), "Settings", window_type.B_FLOATING_WINDOW,  B_NOT_RESIZABLE|B_CLOSE_ON_ESCAPE)
+		self.bckgnd = BView(self.Bounds(), "bckgnd_View", 8, 20000000)
+		bckgnd_bounds=self.bckgnd.Bounds()
+		self.AddChild(self.bckgnd,None)
+		self.bckgnd.SetResizingMode(B_FOLLOW_ALL_SIDES)
+		self.Options = ScrollView(BRect(4 , 4, bckgnd_bounds.Width()/2.5-4, bckgnd_bounds.Height()-4 ), 'OptionsScrollView')
+		self.bckgnd.AddChild(self.Options.sv,None)
+		self.box = BBox(BRect(bckgnd_bounds.Width()/2.5+2,2,bckgnd_bounds.Width()-2,bckgnd_bounds.Height()-2),"optionsbox",0x0202|0x0404,border_style.B_FANCY_BORDER)
+		self.bckgnd.AddChild(self.box,None)
+		perc=BPath()
+		find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
+		ent=BEntry(perc.Path()+"/HTPBZ2")
+		if not ent.Exists():
+			self.Close()
+		else:
+			ent.GetPath(perc)
+			confile=BPath(perc.Path()+'/config.ini',None,False)
+			#self.confile=confile
+			ent=BEntry(confile.Path())
+			if ent.Exists():
+				Config.read(confile.Path())
+				sezione=Config.sections()
+				for key in sezione:
+					self.Options.lv.AddItem(BStringItem(key))
+			else:
+				saytxt="This should not happen: there's no config.ini!"
+				alert= BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
+				alert.Go()
+				self.Close()
+	def MessageReceived(self, msg):
+		if msg.what == 54:
+			son=self.box.CountChildren()
+			if son>0:
+				rmView=self.box.ChildAt(self.box.CountChildren()-1)
+				rmView.Hide()
+				rmView.RemoveSelf()
+			if self.Options.lv.CurrentSelection()>-1:
+				option=self.Options.lv.ItemAt(self.Options.lv.CurrentSelection()).Text()
+				rec=self.box.Bounds()
+				myrec=BRect(rec.left+4,rec.top+4,rec.right-4,rec.bottom-4)
+				if option == "System":
+					self.box.AddChild(SystemView(myrec),None)
+				elif option == 'About':
+					self.box.AddChild(AboutView(myrec),None)
+	def FrameResized(self,x,y):
+		self.ResizeTo(600,300)
 
 class HTPBZ2Window(BWindow):
 	tmpWind=[]
@@ -52,11 +210,14 @@ class HTPBZ2Window(BWindow):
 		#self.box.AddChild(self.OpenFP,None)
 		self.GoBtn=BButton(BRect(bckgnd_bounds.right-46,bckgnd_bounds.bottom-46,bckgnd_bounds.right-8,bckgnd_bounds.bottom-8),'GoBtn',"Go",BMessage(1024),B_FOLLOW_BOTTOM|B_FOLLOW_RIGHT)
 		self.box.AddChild(self.GoBtn,None)
-		#self.input=BTextControl(BRect(40+self.bckgnd.StringWidth("Decompress"),12,bckgnd_bounds.right-32-self.bckgnd.StringWidth("Open")-8,4+font_height_value.ascent*2),"text_input", "Files:","",BMessage(1800))
-		self.OpenFP=BButton(BRect(40+self.bckgnd.StringWidth("Decompress"),8,40+self.bckgnd.StringWidth("Decompress")+32+self.bckgnd.StringWidth("Source"),46),"open_fp","Source",BMessage(207),B_FOLLOW_TOP|B_FOLLOW_RIGHT)
-		self.input=BTextControl(BRect(40+self.bckgnd.StringWidth("Decompress")+32+self.bckgnd.StringWidth("Source")+8,14,bckgnd_bounds.right-8,4+font_height_value.ascent*2),"text_input", "Files:","",BMessage(1800))
+		self.OpenFP=BButton(BRect(40+self.bckgnd.StringWidth("Decompress"),8,40+self.bckgnd.StringWidth("Decompress")+32+self.bckgnd.StringWidth("Source"),46),"open_fp","Source",BMessage(207),B_FOLLOW_TOP|B_FOLLOW_LEFT)
+		self.input=BTextControl(BRect(40+self.bckgnd.StringWidth("Decompress")+32+self.bckgnd.StringWidth("Source")+8,14,bckgnd_bounds.right-50,4+font_height_value.ascent*2),"text_input", "Files:","",BMessage(1800))
 		self.input.SetDivider(self.bckgnd.StringWidth("Files: "))
-		#self.OpenFP=BButton(BRect(bckgnd_bounds.right-32-self.bckgnd.StringWidth("Source"),8,bckgnd_bounds.right-8,46),"open_fp","Source",BMessage(207),B_FOLLOW_TOP|B_FOLLOW_RIGHT)
+		bf=BFont()
+		bf.SetSize(24)
+		self.SettingsBtn = BButton(BRect(bckgnd_bounds.right-46,8,bckgnd_bounds.right-8,46),"settings_btn","⚙",BMessage(407),B_FOLLOW_TOP|B_FOLLOW_RIGHT)
+		self.box.AddChild(self.SettingsBtn,None)
+		self.SettingsBtn.SetFont(bf)
 		self.box.AddChild(self.OpenFP,None)
 		self.SaveFP=BButton(BRect(8,bckgnd_bounds.bottom-46,32+self.bckgnd.StringWidth("To")+8,bckgnd_bounds.bottom-8),"save_fp","To",BMessage(307),B_FOLLOW_BOTTOM|B_FOLLOW_LEFT)
 		self.box.AddChild(self.SaveFP,None)
@@ -138,13 +299,16 @@ class HTPBZ2Window(BWindow):
 			self.ofp.Show()
 		elif msg.what == 307:
 			self.fp.Show()
+		elif msg.what == 407:
+			self.settings_window = SettingsWindow()
+			self.settings_window.Show()
 		elif msg.what == 1024:
 			if self.rb1.Value():
 				create_compressed_archive(self.list_autol, self.output.Text())
 			else:
 				paths=self.input.Text().split(",")
 				for path in paths:
-					decompress_archive(path, self.output.Text()+"/"+os.path.splitext(os.path.basename(path))[0])
+					decompress_archive(path, self.output.Text()+"/"+os.path.splitext(os.path.splitext(os.path.basename(path))[0]))#os.path.basename(path)[:-8]
 		elif msg.what == 191:
 			osdir="/boot/home/Desktop"
 			osfile="/boot/home/Desktop/output.tar.bz2"
@@ -525,8 +689,53 @@ def main():
     be_app.Run()
 	
 if __name__ == "__main__":
-	global save_hash,check_hash
-	save_hash=False
-	check_hash=False
-	get_endianness()
+	global save_hash,check_hash,endianness
+	perc=BPath()
+	find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
+	datapath=BDirectory(perc.Path()+"/HTPBZ2")
+	ent=BEntry(datapath,perc.Path()+"/HTPBZ2")
+	# ent=BEntry(perc.Path()+"/HTPBZ2")
+	if not ent.Exists():
+		datapath.CreateDirectory(perc.Path()+"/HTPBZ2", datapath)
+	ent.GetPath(perc)
+	confile=BPath(perc.Path()+'/config.ini',None,False)
+	ent=BEntry(confile.Path())
+	if ent.Exists():
+		Config.read(confile.Path())
+		#sezione=Config.sections()
+		for key in Config["System"]:
+			if key == "endianness":
+				endianness = ConfigSectionMap("System")["endianness"]
+			elif key == "checksum":
+				value = ConfigSectionMap("System")["checksum"]
+				if value == "True":
+					check_hash=True
+				else:
+					check_hash=False
+			elif key == "savesum":
+				value = ConfigSectionMap("System")["savesum"]
+				if value == "True":
+					save_hash=True
+				else:
+					save_hash=False
+		#for sez in sezione:
+			#self.Options.lv.AddItem(BStringItem(sez))
+	else:
+		print("occorre creare il file:",confile.Path())
+		cfgfile = open(confile.Path(),'w')
+		Config.add_section('System')
+		get_endianness()
+		Config.set('System','endianness', "little")
+		Config.set('System','checksum', "False")
+		check_hash=False
+		Config.set('System','savesum', "False")
+		save_hash=False
+		Config.add_section('About')
+		Config.set('About','version', "1")
+		Config.set('About','status', "beta")
+		Config.set('About','revision', "20240721")#str(datetime.datetime.fromtimestamp(os.path.getmtime(os.path.abspath(__file__))).date().strftime('%Y%m%d')))
+		Config.write(cfgfile)
+		cfgfile.close()
+		Config.read(confile.Path())
+	
 	main()
