@@ -4,7 +4,7 @@ import tarfile
 import bz2
 import multiprocessing
 from functools import partial
-from Be import BApplication, BWindow, BView, BNode,BRadioButton,BButton,BMessage, window_type, B_NOT_RESIZABLE, B_CLOSE_ON_ESCAPE, B_QUIT_ON_WINDOW_CLOSE, BTextControl, BAlert,BListView, BScrollView,BListItem,BStringItem,BTextView,BRect, BBox, BFont, InterfaceDefs, BPath, BDirectory, BEntry,BStringView
+from Be import BApplication, BWindow, BView, BNode,BRadioButton,BButton,BMessage, window_type, B_NOT_RESIZABLE, B_CLOSE_ON_ESCAPE, B_QUIT_ON_WINDOW_CLOSE, BTextControl, BAlert,BListView, BScrollView,BListItem,BStringItem,BTextView,BRect, BBox, BFont, InterfaceDefs, BPath, BDirectory, BEntry,BStringView,BSlider
 from Be import BFile,BCheckBox
 from Be.FindDirectory import *
 from Be.Alert import alert_type
@@ -21,6 +21,7 @@ from Be.Font import font_height,B_OUTLINED_FACE,B_ITALIC_FACE
 from Be.Entry import entry_ref, get_ref_for_path
 from Be.StorageDefs import node_flavor
 from Be.TextView import text_run, text_run_array
+from Be.Slider import hash_mark_location
 import json
 import io
 import base64
@@ -29,8 +30,14 @@ import struct
 import math
 import hashlib
 import configparser
+from pathlib import Path
 
 Config=configparser.ConfigParser()
+global ver,status,rev
+ver="1"
+status="alpha"
+rev="20240722"
+author="Fabio Tomat"
 
 def ConfigSectionMap(section):
     dict1 = {}
@@ -59,6 +66,7 @@ class ScrollView:
 
 class AboutView(BView):
 	def __init__(self,frame):
+		global rev,status,ver,author
 		BView.__init__(self,frame,"About",8,20000000)
 		bounds=self.Bounds()
 		fon=BFont()
@@ -89,6 +97,69 @@ class AboutView(BView):
 		self.AboutText.SetFontAndColor(fon1,B_FONT_ALL,col1)
 		self.AboutText.SetText(txt,None)
 		self.AddChild(self.AboutText,None)
+#		perc=BPath()
+#		find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
+#		ent=BEntry(perc.Path()+"/HTPBZ2")
+#		if not ent.Exists():
+#			self.Close()
+#		else:
+#			ent.GetPath(perc)
+#			confile=BPath(perc.Path()+'/config.ini',None,False)
+#			ent=BEntry(confile.Path())
+#			if ent.Exists():
+#				Config.read(confile.Path())
+#				ver=ConfigSectionMap("About")["version"]
+#				status=ConfigSectionMap("About")["status"]
+#				rev=ConfigSectionMap("About")["revision"]
+		txt="Version: "+ver
+		r=BRect(4,bounds.Height()/2+4,self.StringWidth(txt)+4,font_height_value.ascent+bounds.Height()/2+4)
+		self.version=BStringView(r,"app_ver",txt)
+		self.AddChild(self.version,None)
+		txt="Status: "+status
+		r=BRect(4,font_height_value.ascent+bounds.Height()/2+8,self.StringWidth(txt)+4,font_height_value.ascent*2+bounds.Height()/2+12)
+		self.status=BStringView(r,"app_status",txt)
+		self.AddChild(self.status,None)
+		txt="Rev: "+rev
+		r=BRect(4,font_height_value.ascent*2+bounds.Height()/2+16,self.StringWidth(txt)+4,font_height_value.ascent*3+bounds.Height()/2+20)
+		self.rev=BStringView(r,"app_rev",txt)
+		self.AddChild(self.rev,None)
+		txt="  By TmTFx"
+		fon.GetHeight(font_height_value)
+		fon.SetRotation(20.0)
+		fon.SetShear(90.0)
+		r = BRect(bounds.Width()/2,bounds.Height()/2+8,fon.StringWidth(txt)+bounds.Width()/2+16,bounds.Height()-4)
+		self.author=BStringView(r,"app_auth",txt)
+		self.author.SetFont(fon)
+		self.AddChild(self.author,None)
+				
+class SystemView(BView):
+	def __init__(self,frame):
+		global endianness
+		BView.__init__(self,frame,"About",8,20000000)
+		bounds=self.Bounds()
+		
+		self.endianbox=BBox(BRect(4,4,bounds.Width()-4,bounds.Height()/2-4),"endianess_box",0x0202|0x0404,border_style.B_FANCY_BORDER)
+		self.checksumbox=BBox(BRect(4,bounds.Height()/2+4,bounds.Width()-4,bounds.Height()-4),"checksum_box",0x0202|0x0404,border_style.B_FANCY_BORDER)
+		self.AddChild(self.endianbox,None)
+		self.AddChild(self.checksumbox,None)
+		txt="Machine endianness: "+endianness
+		font_height_value=font_height()
+		self.GetFontHeight(font_height_value)
+		r=BRect(4,4,self.StringWidth(txt)+8,font_height_value.ascent+8)
+		self.sys_endian=BStringView(r,"sys_endianness",txt)
+		self.endianbox.AddChild(self.sys_endian,None)
+		txt="Save checksums in archives"
+		self.ckb_savesum=BCheckBox(BRect(4,4,38+self.StringWidth(txt),font_height_value.ascent+8),"save_chksum",txt,BMessage(1600))
+		txt="Check files upon extraction"
+		self.ckb_checksum=BCheckBox(BRect(4,12+font_height_value.ascent,38+self.StringWidth(txt),16+font_height_value.ascent*2),"check_sum",txt,BMessage(1700))
+		self.checksumbox.AddChild(self.ckb_savesum,None)
+		self.checksumbox.AddChild(self.ckb_checksum,None)
+		r = BRect(4,20+font_height_value.ascent*2,bounds.right-12,24+font_height_value.ascent*3)
+		self.compr_lvl=BSlider(r,"cmpr_lvl","Compression level:",BMessage(1224),0,9)
+		self.compr_lvl.SetHashMarks(hash_mark_location.B_HASH_MARKS_BOTH)
+		self.compr_lvl.SetBarThickness(10.0)
+		self.checksumbox.AddChild(self.compr_lvl,None)
+		self.compr_lvl.SetLimitLabels("0","9")
 		perc=BPath()
 		find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
 		ent=BEntry(perc.Path()+"/HTPBZ2")
@@ -100,40 +171,21 @@ class AboutView(BView):
 			ent=BEntry(confile.Path())
 			if ent.Exists():
 				Config.read(confile.Path())
-				ver=ConfigSectionMap("About")["version"]
-				status=ConfigSectionMap("About")["status"]
-				rev=ConfigSectionMap("About")["revision"]
-				author="TmTFx"
-				txt="Version: "+ver
-				r=BRect(4,bounds.Height()/2+4,self.StringWidth(txt)+4,font_height_value.ascent+bounds.Height()/2+4)
-				self.version=BStringView(r,"app_ver",txt)
-				self.AddChild(self.version,None)
-				txt="Status: "+status
-				r=BRect(4,font_height_value.ascent+bounds.Height()/2+8,self.StringWidth(txt)+4,font_height_value.ascent*2+bounds.Height()/2+12)
-				self.status=BStringView(r,"app_status",txt)
-				self.AddChild(self.status,None)
-				txt="Rev: "+rev
-				r=BRect(4,font_height_value.ascent*2+bounds.Height()/2+16,self.StringWidth(txt)+4,font_height_value.ascent*3+bounds.Height()/2+20)
-				self.rev=BStringView(r,"app_rev",txt)
-				self.AddChild(self.rev,None)
-				txt="  By TmTFx"
-				fon.GetHeight(font_height_value)
-				fon.SetRotation(20.0)
-				fon.SetShear(90.0)
-				r = BRect(bounds.Width()/2,bounds.Height()/2+8,fon.StringWidth(txt)+bounds.Width()/2+16,bounds.Height()-4)
-				self.author=BStringView(r,"app_auth",txt)
-				self.author.SetFont(fon)
-				self.AddChild(self.author,None)
+				value=ConfigSectionMap("System")["savesum"]
+				if value == "True":
+					self.ckb_savesum.SetValue(1)
+				else:
+					self.ckb_savesum.SetValue(0)
 				
-class SystemView(BView):
-	def __init__(self,frame):
-		BView.__init__(self,frame,"About",8,20000000)
-		bounds=self.Bounds()
-		
-		self.endianbox=BBox(BRect(4,4,bounds.Width()-4,bounds.Height()/2-4),"endianess_box",0x0202|0x0404,border_style.B_FANCY_BORDER)
-		self.checksumbox=BBox(BRect(4,bounds.Height()/2+4,bounds.Width()-4,bounds.Height()-4),"checksum_box",0x0202|0x0404,border_style.B_FANCY_BORDER)
-		self.AddChild(self.endianbox,None)
-		self.AddChild(self.checksumbox,None)
+				value=ConfigSectionMap("System")["checksum"]
+				if value == "True":
+					self.ckb_checksum.SetValue(1)
+				else:
+					self.ckb_checksum.SetValue(0)
+				
+				value=int(ConfigSectionMap("System")["compression"])
+				self.compr_lvl.SetValue(value)
+				
 		
 
 class SettingsWindow(BWindow):
@@ -162,12 +214,15 @@ class SettingsWindow(BWindow):
 				sezione=Config.sections()
 				for key in sezione:
 					self.Options.lv.AddItem(BStringItem(key))
+				self.Options.lv.AddItem(BStringItem("About"))
+				
 			else:
 				saytxt="This should not happen: there's no config.ini!"
 				alert= BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
 				alert.Go()
 				self.Close()
 	def MessageReceived(self, msg):
+		global save_hash,check_hash
 		if msg.what == 54:
 			son=self.box.CountChildren()
 			if son>0:
@@ -182,10 +237,81 @@ class SettingsWindow(BWindow):
 					self.box.AddChild(SystemView(myrec),None)
 				elif option == 'About':
 					self.box.AddChild(AboutView(myrec),None)
+		elif msg.what == 1600:
+			self.rmView=self.box.ChildAt(self.box.CountChildren()-1)
+			self.boxview=self.rmView.ChildAt(self.rmView.CountChildren()-1)
+			self.bx=self.boxview.ChildAt(self.boxview.CountChildren()-3)
+			perc=BPath()
+			find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
+			ent=BEntry(perc.Path()+"/HTPBZ2")
+			if not ent.Exists():
+				self.Close()
+			else:
+				ent.GetPath(perc)
+				confile=BPath(perc.Path()+'/config.ini',None,False)
+				ent=BEntry(confile.Path())
+				if ent.Exists():
+					Config.read(confile.Path())
+					cfgfile = open(confile.Path(),'w')
+					if self.bx.Value():
+						Config.set('System','savesum', "True")
+						save_hash=True
+					else:
+						Config.set('System','savesum', "False")
+						save_hash=False
+					Config.write(cfgfile)
+					cfgfile.close()
+					Config.read(confile.Path())
+		elif msg.what == 1700:
+			self.rmView=self.box.ChildAt(self.box.CountChildren()-1)
+			self.boxview=self.rmView.ChildAt(self.rmView.CountChildren()-1)
+			self.bx=self.boxview.ChildAt(self.boxview.CountChildren()-2)
+			perc=BPath()
+			find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
+			ent=BEntry(perc.Path()+"/HTPBZ2")
+			if not ent.Exists():
+				self.Close()
+			else:
+				ent.GetPath(perc)
+				confile=BPath(perc.Path()+'/config.ini',None,False)
+				ent=BEntry(confile.Path())
+				if ent.Exists():
+					Config.read(confile.Path())
+					cfgfile = open(confile.Path(),'w')
+					if self.bx.Value():
+						Config.set('System','checksum', "True")
+						check_hash=True
+					else:
+						Config.set('System','checksum', "False")
+						check_hash=False
+					Config.write(cfgfile)
+					cfgfile.close()
+					Config.read(confile.Path())
+		elif msg.what == 1224:
+			self.rmView=self.box.ChildAt(self.box.CountChildren()-1)
+			self.boxview=self.rmView.ChildAt(self.rmView.CountChildren()-1)
+			self.slid=self.boxview.ChildAt(self.boxview.CountChildren()-1)
+			perc=BPath()
+			find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
+			ent=BEntry(perc.Path()+"/HTPBZ2")
+			if not ent.Exists():
+				self.Close()
+			else:
+				ent.GetPath(perc)
+				confile=BPath(perc.Path()+'/config.ini',None,False)
+				ent=BEntry(confile.Path())
+				if ent.Exists():
+					Config.read(confile.Path())
+					cfgfile = open(confile.Path(),'w')
+					Config.set('System','compression', str(self.slid.Value()))
+					Config.write(cfgfile)
+					cfgfile.close()
+					Config.read(confile.Path())
 	def FrameResized(self,x,y):
 		self.ResizeTo(600,300)
 
 class HTPBZ2Window(BWindow):
+	opf=""
 	tmpWind=[]
 	def __init__(self,cmd,args):
 		BWindow.__init__(self, BRect(200,170,800,278), "Tar Parallel-BZip2 Compressor/Decompressor with attributes", window_type.B_TITLED_WINDOW, B_NOT_RESIZABLE |B_QUIT_ON_WINDOW_CLOSE)
@@ -199,15 +325,10 @@ class HTPBZ2Window(BWindow):
 		fon=BFont()
 		font_height_value=font_height()
 		self.bckgnd.GetFontHeight(font_height_value)
-		
-		#fon.GetHeight(font_height_value)
-		#print(self.bckgnd.StringWidth("Compress"),font_height_value.ascent)
 		self.rb1=BRadioButton(BRect(4,4,30+self.bckgnd.StringWidth("Compress"),font_height_value.ascent),"RB_Compres","Compress", BMessage(191))
 		self.box.AddChild(self.rb1,None)
 		self.rb2=BRadioButton(BRect(4,8+font_height_value.ascent,30+self.bckgnd.StringWidth("Decompress"),8+font_height_value.ascent*2),"RB_Decompres","Decompress", BMessage(181))
 		self.box.AddChild(self.rb2,None)
-		#self.SaveFP=BButton(BRect(),)
-		#self.box.AddChild(self.OpenFP,None)
 		self.GoBtn=BButton(BRect(bckgnd_bounds.right-46,bckgnd_bounds.bottom-46,bckgnd_bounds.right-8,bckgnd_bounds.bottom-8),'GoBtn',"Go",BMessage(1024),B_FOLLOW_BOTTOM|B_FOLLOW_RIGHT)
 		self.box.AddChild(self.GoBtn,None)
 		self.OpenFP=BButton(BRect(40+self.bckgnd.StringWidth("Decompress"),8,40+self.bckgnd.StringWidth("Decompress")+32+self.bckgnd.StringWidth("Source"),46),"open_fp","Source",BMessage(207),B_FOLLOW_TOP|B_FOLLOW_LEFT)
@@ -226,7 +347,8 @@ class HTPBZ2Window(BWindow):
 		self.box.AddChild(self.input,None)
 		self.box.AddChild(self.output,None)
 		self.fp=BFilePanel(B_SAVE_PANEL,None,None,0,False, None, None, True, True)
-		self.ofp=BFilePanel(B_OPEN_PANEL,None,None,0,True, None, None, True, True)
+		print(type(node_flavor.B_DIRECTORY_NODE))
+		self.ofp=BFilePanel(B_OPEN_PANEL,None,None,int(node_flavor.B_DIRECTORY_NODE)|int(node_flavor.B_FILE_NODE),True, None, None, True, True)
 		self.autoload=""
 		if args!=[]:
 			for f in args:
@@ -242,21 +364,17 @@ class HTPBZ2Window(BWindow):
 				a=self.list_autol[0]
 				open_file=os.path.basename(os.path.abspath(a))
 				if BEntry(a).Exists():
-					print("entry exists")
 					osdir=os.path.dirname(os.path.abspath(a))
-					print("osdir di a",osdir,a)
 					if len(self.list_autol)>1:
-						osfile=os.path.basename(os.path.abspath(osdir))+".tar.bz2"#os.path.basename(osdir+".tar.bz2")
+						osfile=os.path.basename(os.path.abspath(osdir))+".tar.bz2"
 					else:
-						osfile=os.path.basename(os.path.abspath(a))+".tar.bz2"#os.path.basename(a+".tar.bz2")
+						osfile=os.path.basename(os.path.abspath(a))+".tar.bz2"
 				else:
-					print("entry inexistent")
-					osdir=os.getcwd()#os.path.abspath(__file__)
-					print("osdir",osdir)
+					osdir=os.getcwd()
 					if len(self.list_autol)>1:
-						osfile=os.path.basename(os.path.abspath(osdir))+".tar.bz2"#os.path.basename(osdir+".tar.bz2")
+						osfile=os.path.basename(os.path.abspath(osdir))+".tar.bz2"
 					else:
-						osfile=os.path.basename(os.path.abspath(a))+".tar.bz2"#os.path.basename(a+".tar.bz2")
+						osfile=os.path.basename(os.path.abspath(a))+".tar.bz2"
 				self.output.SetText(osfile)
 			elif cmd=="d":
 				self.fp=BFilePanel(B_OPEN_PANEL,None,None,node_flavor.B_DIRECTORY_NODE,False, None, None, True, True)
@@ -296,19 +414,24 @@ class HTPBZ2Window(BWindow):
 
 	def MessageReceived(self, msg):
 		if msg.what == 207:
+			self.opf=""
 			self.ofp.Show()
+			
 		elif msg.what == 307:
 			self.fp.Show()
 		elif msg.what == 407:
 			self.settings_window = SettingsWindow()
 			self.settings_window.Show()
 		elif msg.what == 1024:
+			self.list_autol=self.input.Text().split(",")
 			if self.rb1.Value():
 				create_compressed_archive(self.list_autol, self.output.Text())
 			else:
 				paths=self.input.Text().split(",")
 				for path in paths:
-					decompress_archive(path, self.output.Text()+"/"+os.path.splitext(os.path.splitext(os.path.basename(path))[0]))#os.path.basename(path)[:-8]
+					suf="".join(Path(path).suffixes)
+					out=os.path.basename(path[:-len(suf)])
+					decompress_archive(path, self.output.Text()+"/"+out)
 		elif msg.what == 191:
 			osdir="/boot/home/Desktop"
 			osfile="/boot/home/Desktop/output.tar.bz2"
@@ -324,7 +447,16 @@ class HTPBZ2Window(BWindow):
 			self.fp=BFilePanel(B_OPEN_PANEL,None,None,node_flavor.B_DIRECTORY_NODE,False, None, None, True, True)
 			self.fp.SetPanelDirectory(osdir)
 			self.ofp.SetPanelDirectory(osdir)
-			
+		elif msg.what == 45371:
+			percors=msg.FindString("path")
+			if self.opf == "":
+				self.opf="".join(percors)
+			else:
+				self.opf=self.opf+","+percors
+			self.input.SetText(self.opf)
+			self.list_autol=self.opf.split(",")
+		elif msg.what == 1800:
+			self.list_autol=self.input.Text().split(",")
 	def QuitRequested(self):
 		wnum = be_app.CountWindows()
 		if wnum>1:
@@ -382,12 +514,12 @@ def attr(node):
 	return al
 	
 def decompress_file(input_file, output_file, block_size=1024*1024):
-    with bz2.BZ2File(input_file, 'rb') as f_in, open(output_file, 'wb') as f_out:
-        while True:
-            block = f_in.read(block_size)
-            if not block:
-                break
-            f_out.write(block)
+	with bz2.BZ2File(input_file, 'rb') as f_in, open(output_file, 'wb') as f_out:
+		while True:
+			block = f_in.read(block_size)
+			if not block:
+				break
+			f_out.write(block)
 
 def get_type_string(value):
 	type_string = struct.pack('>I', value).decode('utf-8')
@@ -416,14 +548,12 @@ def parallel_compress_file(input_file, output_file, block_size=1024*1024, compre
             f.write(compressed_block)
 
 def extract_tar_with_attributes(tar_file, output_dir):
-	global check_hash
+	global check_hash,endianness
 	with tarfile.open(tar_file, "r") as tar:
 		tar.extractall(output_dir)
 		for member in tar.getmembers():
-			print(member)
 			if member.name.endswith('.attr'):
 				attr_path = os.path.join(output_dir, member.name)
-				#original_file = attr_path[:-5]  # Rimuovere '.attr' dal nome del file
 				original_file= attr_path[:-38] #Rimuove sia .attr che .{hash}
 				with open(attr_path, 'r') as f:
 					attr_data = json.load(f)
@@ -439,53 +569,62 @@ def extract_tar_with_attributes(tar_file, output_dir):
 								#TODO: print to log missing hash on original_file, attribute name
 						node=BNode(original_file)
 						ck=get_type_string(details['type'])
-						if ck == 'RAWT':#1380013908:#byte
+						if ck == 'RAWT':
 							attr_value = base64.b64decode(attr_value)
 							if check_hash:
 								if get_bytes_md5(attr_value)==attr_hash:
 									print(original_file, name, "checksum OK")
 								else:
 									print(original_file, name, "checksum Failed")
-						elif ck == 'LONG':#1280265799:#int32
-							attr_value = base64.b64decode(attr_value)
+						elif ck == 'LONG':
+							attr_value = int(attr_value)
+							attr_value = attr_value.to_bytes(4,byteorder=endianness)#'little')
 							if check_hash:
+								
 								if get_bytes_md5(attr_value) == attr_hash:
 									print(original_file, name, "checksum OK")
 								else:
 									print(original_file, name, "checksum Failed")
-							value = int.from_bytes(attr_value,byteorder='little')
-							attr_value = value.to_bytes(4,byteorder='little')
-						elif ck == 'TIME': #1414090053:#datetime
+						elif ck == 'LLNG':
+							attr_value = int(attr_value)
+							attr_value = attr_value.to_bytes(8,byteorder=endianness)#'little')
 							if check_hash:
-								if get_bytes_md5(int(attr_value).to_bytes(8,byteorder='little'))==attr_hash:
+								
+								if get_bytes_md5(attr_value) == attr_hash:
+									print(original_file, name, "checksum OK")
+								else:
+									print(original_file, name, "checksum Failed")
+						elif ck == 'TIME':
+							if check_hash:
+								if get_bytes_md5(int(attr_value).to_bytes(8,byteorder=endianness))==attr_hash:#'little'))==attr_hash:
 									print(original_file, name, "checksum OK")
 								else:
 									print(original_file, name, "checksum Failed")
 							a=bytes_needed(attr_value)
-							attr_value=attr_value.to_bytes(a,byteorder='little')
-						elif ck == 'CSTR' or ck == 'MIMS':# 1129534546 or ck == 1296649555:#string o MIMS
-							attr_value = base64.b64decode(str(attr_value).encode('utf-8'))#verificare questo!!!!!
+							attr_value=attr_value.to_bytes(a,byteorder=endianness)#'little')
+						elif ck == 'CSTR' or ck == 'MIMS':
+							attr_value=str.encode(attr_value)
 							if check_hash:
 								if get_str_md5(attr_value)==attr_hash:
 									print(original_file, name, "checksum OK")
 								else:
 									print(original_file, name, "checksum Failed")
-						elif ck == 'BOOL':#1112493900:#bool
-							#missing_padding = len(attr_value) % 4
-							#if missing_padding:
-							#	attr_value += '=' * (4 - missing_padding)
-								#print("mentre",attr_value)
-							#bool_bytes = base64.b64decode(str(attr_value).encode('utf-8'))
-							#print("bool_bytes",bool_bytes)
-							#print("prima:",type(attr_value),attr_value)
-							#attr_value = struct.unpack('?', bytes(attr_value))[0]
+							
+						elif ck == 'BOOL':
 							attr_value=bytes(attr_value,'utf-8')
 							if check_hash:
 								if get_bytes_md5(attr_value)==attr_hash:
 									print(original_file, name, "checksum OK")
 								else:
 									print(original_file, name, "checksum Failed")
-						elif ck == 'FLOT':#1179406164:#float
+						elif ck == 'FLOT':
+							attr_value=base64.b64decode(attr_value)
+							if check_hash:
+								if get_bytes_md5(attr_value)==attr_hash:
+									print(original_file, name, "checksum OK")
+								else:
+									print(original_file, name, "checksum Failed")
+						elif ck == 'DBLE':
 							attr_value=base64.b64decode(attr_value)
 							if check_hash:
 								if get_bytes_md5(attr_value)==attr_hash:
@@ -493,7 +632,6 @@ def extract_tar_with_attributes(tar_file, output_dir):
 								else:
 									print(original_file, name, "checksum Failed")
 						else: #ripiego?
-							print("ripiego per",get_type_string(attr_type),attr_value)
 							attr_value = base64.b64decode(attr_value)
 							if check_hash:
 								if get_bytes_md5(attr_value)==attr_hash:
@@ -504,65 +642,75 @@ def extract_tar_with_attributes(tar_file, output_dir):
 				os.remove(attr_path)
 
 def add_attributes_to_tar(tar, path):
-	global save_hash
+	global save_hash,endianness
 	nf=BNode(path)
 	attributes=attr(nf)
 	if len(attributes)>0:
 		attr_data = {}
 		for name, (attr_type, attr_size, attr_value) in attributes:
-			if get_type_string(attr_type)=='RAWT':#attr_type == 1380013908:#bytes
+			#print(name,get_type_string(attr_type))
+			if get_type_string(attr_type)=='RAWT':
 				if save_hash:
 					attr_hash = get_bytes_md5(attr_value[0])
 				attr_value = base64.b64encode(attr_value[0]).decode('utf-8')
-			elif get_type_string(attr_type)=='TIME':#attr_type == 1414090053:#bigtime_t int
+			elif get_type_string(attr_type)=='TIME':
 				if save_hash:
-					attr_hash = get_bytes_md5(int(attr_value[0].timestamp()).to_bytes(8,byteorder='little')) #* 1000000).to_bytes(8,byteorder='little'))
-				#attr_hash = get_str_md5(str(int(attr_value[0].timestamp() * 1_000_000)))
-				attr_value=int(attr_value[0].timestamp())# * 1000000)
-			elif get_type_string(attr_type)=='CSTR':#attr_type == 1129534546: #string
+					attr_hash = get_bytes_md5(int(attr_value[0].timestamp()).to_bytes(8,byteorder=endianness))#'little'))
+				attr_value=int(attr_value[0].timestamp())
+			elif get_type_string(attr_type)=='CSTR':
 				if save_hash:
 					attr_hash = get_str_md5(attr_value[0])
-				attr_value = base64.b64encode(str.encode(attr_value[0])).decode('utf-8')
-			elif get_type_string(attr_type)=='BOOL':#attr_type == 1112493900:#bool
+				attr_value = attr_value[0]
+			elif get_type_string(attr_type)=='BOOL':
 				if save_hash:
 					attr_hash = get_bytes_md5(struct.pack('?',attr_value[0]))
 				attr_value = struct.pack('?',attr_value[0]).decode('utf-8')
-			elif get_type_string(attr_type)=='LONG':#attr_type == 1280265799: #int32
-				endianed_bytes = attr_value[0].to_bytes(4,byteorder='little')
+			elif get_type_string(attr_type) =='LONG':
 				if save_hash:
+					endianed_bytes = attr_value[0].to_bytes(4,byteorder=endianness)#'little')
 					attr_hash = get_bytes_md5(endianed_bytes)
-				attr_value = base64.b64encode(endianed_bytes).decode('utf-8')
-			elif get_type_string(attr_type)=='FLOT':#attr_type == 1179406164:#float
-				Battr_value=struct.pack('f',attr_value[0])
+				attr_value = str(attr_value[0])
+			elif get_type_string(attr_type) =='LLNG':
+				if save_hash:
+					endianed_bytes = attr_value[0].to_bytes(8,byteorder=endianness)#'little')
+					attr_hash = get_bytes_md5(endianed_bytes)
+				attr_value = str(attr_value[0])
+			elif get_type_string(attr_type)=='FLOT':
+				Battr_value=struct.pack('<f',attr_value[0])
+				if save_hash:
+					attr_hash = get_bytes_md5(Battr_value)
+				attr_value = base64.b64encode(Battr_value).decode('utf-8')
+			elif get_type_string(attr_type)=='DBLE':
+				Battr_value=struct.pack('<d',attr_value[0])
 				if save_hash:
 					attr_hash = get_bytes_md5(Battr_value)
 				attr_value = base64.b64encode(Battr_value).decode('utf-8')
 			elif get_type_string(attr_type)=='MIMS':
 				if save_hash:
 					attr_hash = get_str_md5(attr_value[0])
-				attr_value = base64.b64encode(str.encode(attr_value[0])).decode('utf-8')
+				attr_value = attr_value[0]
 			else: #ripiego
-				print("ripiego")
 				if isinstance(attr_value[0],str):
-					print('si tratta di una stringa')
 					if save_hash:
 						attr_hash = get_str_md5(attr_value[0])
-					attr_value = base64.b64encode(str.encode(attr_value[0])).decode('utf-8')
+					attr_value = attr_value[0]
 				elif isinstance(attr_value[0],int):
-					print('si tratta di un intero')
-					numb = bytes_needed(attr_value[0])
-					endianed_bytes = attr_value[0].to_bytes(numb,byteorder=endianness)
 					if save_hash:
+						numb = bytes_needed(attr_value[0])
+						endianed_bytes = attr_value[0].to_bytes(numb,byteorder=endianness)
 						attr_hash = get_bytes_md5(endianed_bytes)
-					attr_value = base64.b64encode(endianed_bytes).decode('utf-8')
+					attr_value = str(attr_value[0])
 				elif isinstance(attr_value[0],float):
-					print('si tratta di un float')
-					Battr_value=struct.pack('d',attr_value[0])
+					Battr_value=struct.pack('<f',attr_value[0])
 					if save_hash:
 						attr_hash = get_bytes_md5(Battr_value)
-					attr_value = base64.b64encode(Battr_value).decode('utf-8')
+					attr_value = str(Battr_value)
+				#elif isinstance(attr_value[0],double): # there's no double in python
+				#	Battr_value=struct.pack('<d',attr_value[0])
+				#	if save_hash:
+				#		attr_hash = get_bytes_md5(Battr_value)
+				#	attr_value = str(Battr_value)
 				else:
-					print('si tratta di altro')
 					if save_hash:
 						attr_hash = get_bytes_md5(attr_value[0])
 					attr_value = base64.b64encode(attr_value[0]).decode('utf-8')
@@ -581,7 +729,7 @@ def add_attributes_to_tar(tar, path):
 				}
 		attr_json = json.dumps(attr_data).encode('utf-8')
 		md5attr_json=str(get_bytes_md5(attr_json))
-		print(md5attr_json)
+		print(md5attr_json)#TODO: Check on extract this checksum
 		attr_info = tarfile.TarInfo(name=f"{path}.{md5attr_json}.attr")
 		attr_info.size = len(attr_json)
 		tar.addfile(attr_info, io.BytesIO(attr_json))
@@ -625,7 +773,6 @@ class App(BApplication):
 		self.window = HTPBZ2Window(self.cmd,self.realargs)
 		self.window.Show()
 	def ArgvReceived(self,num,args):
-		print("ci sono argomenti",args)
 		with open('testargvreceived.txt', 'w') as writer:
 			writer.write(str(args))
 		realargs=args
@@ -651,6 +798,7 @@ class App(BApplication):
 					if entry.Exists():
 						percors=BPath()
 						entry.GetPath(percors)
+						#print("da RefsReceived",percors.Path())
 						ofpmsg=BMessage(45371)
 						ofpmsg.AddString("path",percors.Path())
 						be_app.WindowAt(0).PostMessage(ofpmsg)
@@ -694,7 +842,6 @@ if __name__ == "__main__":
 	find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
 	datapath=BDirectory(perc.Path()+"/HTPBZ2")
 	ent=BEntry(datapath,perc.Path()+"/HTPBZ2")
-	# ent=BEntry(perc.Path()+"/HTPBZ2")
 	if not ent.Exists():
 		datapath.CreateDirectory(perc.Path()+"/HTPBZ2", datapath)
 	ent.GetPath(perc)
@@ -718,22 +865,16 @@ if __name__ == "__main__":
 					save_hash=True
 				else:
 					save_hash=False
-		#for sez in sezione:
-			#self.Options.lv.AddItem(BStringItem(sez))
 	else:
-		print("occorre creare il file:",confile.Path())
 		cfgfile = open(confile.Path(),'w')
 		Config.add_section('System')
 		get_endianness()
-		Config.set('System','endianness', "little")
+		Config.set('System','endianness', endianness)
 		Config.set('System','checksum', "False")
 		check_hash=False
 		Config.set('System','savesum', "False")
+		Config.set('System','compression', "9")
 		save_hash=False
-		Config.add_section('About')
-		Config.set('About','version', "1")
-		Config.set('About','status', "beta")
-		Config.set('About','revision', "20240721")#str(datetime.datetime.fromtimestamp(os.path.getmtime(os.path.abspath(__file__))).date().strftime('%Y%m%d')))
 		Config.write(cfgfile)
 		cfgfile.close()
 		Config.read(confile.Path())
