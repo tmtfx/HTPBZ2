@@ -38,7 +38,7 @@ Config=configparser.ConfigParser()
 global ver,status,rev
 ver="1"
 status="alpha"
-rev="20240722"
+rev="20240723"
 author="Fabio Tomat"
 
 def ConfigSectionMap(section):
@@ -57,7 +57,6 @@ def ConfigSectionMap(section):
 class ScrollView:
 	HiWhat = 53 #Doppioclick
 	SectionSelection = 54
-
 	def __init__(self, rect, name):
 		self.lv = BListView(rect, name, list_view_type.B_SINGLE_SELECTION_LIST)
 		self.lv.SetResizingMode(B_FOLLOW_TOP_BOTTOM)
@@ -99,20 +98,6 @@ class AboutView(BView):
 		self.AboutText.SetFontAndColor(fon1,B_FONT_ALL,col1)
 		self.AboutText.SetText(txt,None)
 		self.AddChild(self.AboutText,None)
-#		perc=BPath()
-#		find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
-#		ent=BEntry(perc.Path()+"/HTPBZ2")
-#		if not ent.Exists():
-#			self.Close()
-#		else:
-#			ent.GetPath(perc)
-#			confile=BPath(perc.Path()+'/config.ini',None,False)
-#			ent=BEntry(confile.Path())
-#			if ent.Exists():
-#				Config.read(confile.Path())
-#				ver=ConfigSectionMap("About")["version"]
-#				status=ConfigSectionMap("About")["status"]
-#				rev=ConfigSectionMap("About")["revision"]
 		txt="Version: "+ver
 		r=BRect(4,bounds.Height()/2+4,self.StringWidth(txt)+4,font_height_value.ascent+bounds.Height()/2+4)
 		self.version=BStringView(r,"app_ver",txt)
@@ -139,7 +124,6 @@ class SystemView(BView):
 		global endianness
 		BView.__init__(self,frame,"About",8,20000000)
 		bounds=self.Bounds()
-		
 		self.endianbox=BBox(BRect(4,4,bounds.Width()-4,bounds.Height()/2-4),"endianess_box",0x0202|0x0404,border_style.B_FANCY_BORDER)
 		self.checksumbox=BBox(BRect(4,bounds.Height()/2+4,bounds.Width()-4,bounds.Height()-4),"checksum_box",0x0202|0x0404,border_style.B_FANCY_BORDER)
 		self.AddChild(self.endianbox,None)
@@ -156,12 +140,9 @@ class SystemView(BView):
 		fon_height_value=font_height()
 		self.GetFontHeight(fon_height_value)
 		r=BRect(chkb_bounds.right-8-fon.StringWidth("0"),15,chkb_bounds.right-4,18+fon.Size())
-		#r.PrintToStream()
-		#chkb_bounds.bottom-font_height_value.ascent,chkb_bounds.Width()/2+self.StringWidth("0")+4,chkb_bounds.bottom-1)
 		self.cmplvl_value = BStringView(r,"cmplvl_value","9")
 		self.cmplvl_value.SetFont(fon)
 		self.checksumbox.AddChild(self.cmplvl_value,None)
-		
 		txt="Save checksums in archives"
 		self.ckb_savesum=BCheckBox(BRect(4,4,38+self.StringWidth(txt),font_height_value.ascent+8),"save_chksum",txt,BMessage(1600))
 		txt="Check files upon extraction"
@@ -190,19 +171,15 @@ class SystemView(BView):
 					self.ckb_savesum.SetValue(1)
 				else:
 					self.ckb_savesum.SetValue(0)
-				
 				value=ConfigSectionMap("System")["checksum"]
 				if value == "True":
 					self.ckb_checksum.SetValue(1)
 				else:
 					self.ckb_checksum.SetValue(0)
-				
 				strvalue=ConfigSectionMap("System")["compression"]
 				value=int(strvalue)
 				self.compr_lvl.SetValue(value)
 				self.cmplvl_value.SetText(strvalue)
-				
-				
 
 class SettingsWindow(BWindow):
 	def __init__(self):
@@ -231,7 +208,6 @@ class SettingsWindow(BWindow):
 				for key in sezione:
 					self.Options.lv.AddItem(BStringItem(key))
 				self.Options.lv.AddItem(BStringItem("About"))
-				
 			else:
 				saytxt="This should not happen: there's no config.ini!"
 				alert= BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
@@ -466,11 +442,6 @@ class HTPBZ2Window(BWindow):
 						else:
 							osfileout+=","+os.getcwd()
 				self.output.SetText(osfileout)
-#			ofpmsg=BMessage(45371)
-#			ofpmsg.AddString("path",autoload)
-#			be_app.WindowAt(0).PostMessage(ofpmsg)
-#			osdir=os.path.dirname(autoload)
-#			osfile=os.path.basename(autoload)
 		else:
 			osdir="/boot/home/Desktop"
 			osfile="/boot/home/Desktop/output.tar.bz2"
@@ -485,7 +456,6 @@ class HTPBZ2Window(BWindow):
 			pass
 
 	def MessageReceived(self, msg):
-		#msg.PrintToStream()
 		if msg.what == 207:
 			self.opf=""
 			self.ofp.Show()
@@ -563,7 +533,6 @@ class HTPBZ2Window(BWindow):
 				fout=self.output.Text()
 				thr=Thread(target=create_compressed_archive,args=(self.list_autol,fout,cmplvl,))
 				thr.start()
-				#create_compressed_archive(self.list_autol, self.output.Text(),cmplvl)
 			else:
 				paths=self.input.Text().split(",")
 				for s in paths:
@@ -580,14 +549,6 @@ class HTPBZ2Window(BWindow):
 				self.box.Hide()
 				self.extrelbox.Show()
 				Thread(target=launch_extractions,args=(paths,self.output.Text())).start()
-				#self.thr=Thread(target=self.launch_extractions,args=(paths,))
-				#self.thr.start()
-				#for path in paths:
-				#	self.ewip2.SetText("Decompressing BZip2 file...")
-				#	suf="".join(Path(path).suffixes)
-				#	out=os.path.basename(path[:-len(suf)])
-				#	complout=self.output.Text()+"/"+out
-				#	decompress_archive(path, complout)
 		elif msg.what == 191:
 			osdir="/boot/home/Desktop"
 			osfile="/boot/home/Desktop/output.tar.bz2"
@@ -626,7 +587,6 @@ class HTPBZ2Window(BWindow):
 
 def launch_extractions(paths,outputxt):
 	for path in paths:
-		#self.ewip2.SetText("Decompressing BZip2 file...")
 		be_app.WindowAt(0).PostMessage(BMessage(707))
 		suf="".join(Path(path).suffixes)
 		out=os.path.basename(path[:-len(suf)])
@@ -747,7 +707,6 @@ def extract_tar_with_attributes(tar_file, output_dir):
 							attr_value = int(attr_value)
 							attr_value = attr_value.to_bytes(4,byteorder=endianness)#'little')
 							if check_hash:
-								
 								if get_bytes_md5(attr_value) == attr_hash:
 									print(original_file, name, "checksum OK")
 								else:
@@ -756,7 +715,6 @@ def extract_tar_with_attributes(tar_file, output_dir):
 							attr_value = int(attr_value)
 							attr_value = attr_value.to_bytes(8,byteorder=endianness)#'little')
 							if check_hash:
-								
 								if get_bytes_md5(attr_value) == attr_hash:
 									print(original_file, name, "checksum OK")
 								else:
@@ -783,7 +741,7 @@ def extract_tar_with_attributes(tar_file, output_dir):
 								if get_bytes_md5(attr_value)==attr_hash:
 									print(original_file, name, "checksum OK")
 								else:
-									print(original_file, name, "checksum Failed")
+									print(original_file, name, "checksum8 Failed")
 						elif ck == 'FLOT':
 							attr_value=base64.b64decode(attr_value)
 							if check_hash:
@@ -913,10 +871,6 @@ def add_attributes_to_tar(tar, path,cutter):
 def create_tar_with_attributes(input_paths, tar_file):
 	with tarfile.open(tar_file, "w") as tar:
 		for input_path in input_paths:
-			#try:
-			#	print(os.path.basename(input_path))
-			#except:
-			#	print("no basename for",input_path)
 			basename=os.path.basename(input_path)
 			tar.add(input_path, arcname=os.path.basename(input_path))
 			if os.path.isfile(input_path):
@@ -958,9 +912,7 @@ class App(BApplication):
 	def ReadyToRun(self):
 		self.window = HTPBZ2Window(self.cmd,self.realargs)
 		self.window.Show()
-	def ArgvReceived(self,num,args):
-		with open('testargvreceived.txt', 'w') as writer:
-			writer.write(str(args))
+	def ArgvReceived(self,num,args):# argvReceived is executed before readytorun
 		realargs=args
 		if args[1][-9:]=="HTPBZ2.py":
 			realargs.pop(1)
@@ -971,7 +923,6 @@ class App(BApplication):
 						self.cmd=realargs[0][1]
 						realargs.pop(0)
 						self.realargs=realargs
-		#self.autoload=args[-1]# argvReceived is executed before readytorun, we pass the last argument
 	def RefsReceived(self, msg):
 		if msg.what == B_REFS_RECEIVED:
 			i = 0
@@ -984,7 +935,6 @@ class App(BApplication):
 					if entry.Exists():
 						percors=BPath()
 						entry.GetPath(percors)
-						#print("da RefsReceived",percors.Path())
 						ofpmsg=BMessage(45371)
 						ofpmsg.AddString("path",percors.Path())
 						be_app.WindowAt(0).PostMessage(ofpmsg)
@@ -1008,9 +958,6 @@ class App(BApplication):
 #			self.asku=BAlert('cle', "ricevuto argv", 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_STOP_ALERT)
 #			self.asku.Go()
 		BApplication.MessageReceived(self,msg)
-#	def MessageReceived(self,msg):
-#		msg.PrintToStream()
-#		BApplication.MessageReceived(self,msg)
 
 	def Pulse(self):
 		be_app.WindowAt(0).PostMessage(BMessage(66))
