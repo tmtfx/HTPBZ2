@@ -31,6 +31,7 @@ import math
 import hashlib
 import configparser
 from pathlib import Path
+from threading import Thread
 
 Config=configparser.ConfigParser()
 global ver,status,rev
@@ -148,6 +149,18 @@ class SystemView(BView):
 		r=BRect(4,4,self.StringWidth(txt)+8,font_height_value.ascent+8)
 		self.sys_endian=BStringView(r,"sys_endianness",txt)
 		self.endianbox.AddChild(self.sys_endian,None)
+		chkb_bounds=self.checksumbox.Bounds()
+		fon=BFont()
+		fon.SetSize(32)
+		fon_height_value=font_height()
+		self.GetFontHeight(fon_height_value)
+		r=BRect(chkb_bounds.right-8-fon.StringWidth("0"),15,chkb_bounds.right-4,18+fon.Size())
+		r.PrintToStream()
+		#chkb_bounds.bottom-font_height_value.ascent,chkb_bounds.Width()/2+self.StringWidth("0")+4,chkb_bounds.bottom-1)
+		self.cmplvl_value = BStringView(r,"cmplvl_value","9")
+		self.cmplvl_value.SetFont(fon)
+		self.checksumbox.AddChild(self.cmplvl_value,None)
+		
 		txt="Save checksums in archives"
 		self.ckb_savesum=BCheckBox(BRect(4,4,38+self.StringWidth(txt),font_height_value.ascent+8),"save_chksum",txt,BMessage(1600))
 		txt="Check files upon extraction"
@@ -155,11 +168,11 @@ class SystemView(BView):
 		self.checksumbox.AddChild(self.ckb_savesum,None)
 		self.checksumbox.AddChild(self.ckb_checksum,None)
 		r = BRect(4,20+font_height_value.ascent*2,bounds.right-12,24+font_height_value.ascent*3)
-		self.compr_lvl=BSlider(r,"cmpr_lvl","Compression level:",BMessage(1224),0,9)
+		self.compr_lvl=BSlider(r,"cmpr_lvl","Compression level:",BMessage(1224),1,9)
 		self.compr_lvl.SetHashMarks(hash_mark_location.B_HASH_MARKS_BOTH)
 		self.compr_lvl.SetBarThickness(10.0)
 		self.checksumbox.AddChild(self.compr_lvl,None)
-		self.compr_lvl.SetLimitLabels("0","9")
+		self.compr_lvl.SetLimitLabels("1","9")
 		perc=BPath()
 		find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
 		ent=BEntry(perc.Path()+"/HTPBZ2")
@@ -183,10 +196,12 @@ class SystemView(BView):
 				else:
 					self.ckb_checksum.SetValue(0)
 				
-				value=int(ConfigSectionMap("System")["compression"])
+				strvalue=ConfigSectionMap("System")["compression"]
+				value=int(strvalue)
 				self.compr_lvl.SetValue(value)
+				self.cmplvl_value.SetText(strvalue)
 				
-		
+				
 
 class SettingsWindow(BWindow):
 	def __init__(self):
@@ -241,6 +256,11 @@ class SettingsWindow(BWindow):
 			self.rmView=self.box.ChildAt(self.box.CountChildren()-1)
 			self.boxview=self.rmView.ChildAt(self.rmView.CountChildren()-1)
 			self.bx=self.boxview.ChildAt(self.boxview.CountChildren()-3)
+			if self.bx.Label()!="Save checksums in archives":
+				saytxt="Handling wrong configuration, ignoring"
+				self.alert= BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
+				self.alert.Go()
+				return
 			perc=BPath()
 			find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
 			ent=BEntry(perc.Path()+"/HTPBZ2")
@@ -266,6 +286,11 @@ class SettingsWindow(BWindow):
 			self.rmView=self.box.ChildAt(self.box.CountChildren()-1)
 			self.boxview=self.rmView.ChildAt(self.rmView.CountChildren()-1)
 			self.bx=self.boxview.ChildAt(self.boxview.CountChildren()-2)
+			if self.bx.Label()!="Check files upon extraction":
+				saytxt="Handling wrong configuration, ignoring"
+				self.alert= BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
+				self.alert.Go()
+				return
 			perc=BPath()
 			find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
 			ent=BEntry(perc.Path()+"/HTPBZ2")
@@ -291,22 +316,36 @@ class SettingsWindow(BWindow):
 			self.rmView=self.box.ChildAt(self.box.CountChildren()-1)
 			self.boxview=self.rmView.ChildAt(self.rmView.CountChildren()-1)
 			self.slid=self.boxview.ChildAt(self.boxview.CountChildren()-1)
+			if type(self.slid)!=BSlider:
+				saytxt="Handling wrong configuration, ignoring"
+				self.alert= BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
+				self.alert.Go()
+				return
+			self.cmplvl_value=self.boxview.ChildAt(self.boxview.CountChildren()-4)
+			if type(self.cmplvl_value)!=BStringView:
+				saytxt="Handling wrong configuration, ignoring"
+				self.alert= BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
+				self.alert.Go()
+				return
+			
 			perc=BPath()
 			find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
 			ent=BEntry(perc.Path()+"/HTPBZ2")
 			if not ent.Exists():
 				self.Close()
 			else:
+				v=str(self.slid.Value())
 				ent.GetPath(perc)
 				confile=BPath(perc.Path()+'/config.ini',None,False)
 				ent=BEntry(confile.Path())
 				if ent.Exists():
 					Config.read(confile.Path())
 					cfgfile = open(confile.Path(),'w')
-					Config.set('System','compression', str(self.slid.Value()))
+					Config.set('System','compression', v)
 					Config.write(cfgfile)
 					cfgfile.close()
 					Config.read(confile.Path())
+					self.cmplvl_value.SetText(v)
 	def FrameResized(self,x,y):
 		self.ResizeTo(600,300)
 
@@ -321,8 +360,38 @@ class HTPBZ2Window(BWindow):
 		self.bckgnd.SetResizingMode(B_FOLLOW_ALL_SIDES)
 		bckgnd_bounds=self.bckgnd.Bounds()
 		self.box = BBox(BRect(0,0,bckgnd_bounds.Width(),bckgnd_bounds.Height()),"Underbox",0x0202|0x0404,border_style.B_FANCY_BORDER)
+		self.compelbox = BBox(BRect(0,0,bckgnd_bounds.Width(),bckgnd_bounds.Height()),"Compression_box",0x0202|0x0404,border_style.B_FANCY_BORDER)
+		self.extrelbox = BBox(BRect(0,0,bckgnd_bounds.Width(),bckgnd_bounds.Height()),"Extraction_box",0x0202|0x0404,border_style.B_FANCY_BORDER)
+		self.bckgnd.AddChild(self.compelbox, None)
+		self.bckgnd.AddChild(self.extrelbox, None)
+		self.iwheel=0
+		self.steps=['˹','   ˺','   ˼','˻']
+		self.extrelbox.Hide()
+		self.compelbox.Hide()
 		self.bckgnd.AddChild(self.box, None)
 		fon=BFont()
+		fon.SetSize(24)
+		txt="Processing..."
+		self.cwip=BStringView(BRect(8,8,16+fon.StringWidth(txt),16+fon.Size()),"comp_el",txt)
+		self.cwip.SetFont(fon)
+		txt2="Creating tar archive..."
+		self.cwip2=BStringView(BRect(8,20+fon.Size(),self.compelbox.Bounds().right-8,24+fon.Size()*2),"comp_job",txt2)
+		self.cwip2.SetFont(fon)
+		self.cantihalt=BStringView(BRect(self.compelbox.Bounds().right-16-fon.StringWidth(self.steps[2]),self.compelbox.Bounds().bottom-8-fon.Size(),self.compelbox.Bounds().right-8,self.compelbox.Bounds().bottom-8),"comp_wheel",self.steps[0])
+		self.cantihalt.SetFont(fon)
+		self.eantihalt=BStringView(BRect(self.compelbox.Bounds().right-16-fon.StringWidth(self.steps[2]),self.compelbox.Bounds().bottom-8-fon.Size(),self.compelbox.Bounds().right-8,self.compelbox.Bounds().bottom-8),"extr_wheel",self.steps[0])
+		self.eantihalt.SetFont(fon)
+		self.ewip=BStringView(BRect(8,8,16+fon.StringWidth(txt),16+fon.Size()),"extr_el",txt)
+		self.ewip.SetFont(fon)
+		txt3="Decompressing BZip2 file..."
+		self.ewip2=BStringView(BRect(8,20+fon.Size(),self.extrelbox.Bounds().right-8,24+fon.Size()*2),"extr_job",txt3)
+		self.ewip2.SetFont(fon)
+		self.compelbox.AddChild(self.cwip,None)
+		self.compelbox.AddChild(self.cwip2,None)
+		self.compelbox.AddChild(self.cantihalt,None)
+		self.extrelbox.AddChild(self.ewip,None)
+		self.extrelbox.AddChild(self.ewip2,None)
+		self.extrelbox.AddChild(self.eantihalt,None)
 		font_height_value=font_height()
 		self.bckgnd.GetFontHeight(font_height_value)
 		self.rb1=BRadioButton(BRect(4,4,30+self.bckgnd.StringWidth("Compress"),font_height_value.ascent),"RB_Compres","Compress", BMessage(191))
@@ -347,8 +416,7 @@ class HTPBZ2Window(BWindow):
 		self.box.AddChild(self.input,None)
 		self.box.AddChild(self.output,None)
 		self.fp=BFilePanel(B_SAVE_PANEL,None,None,0,False, None, None, True, True)
-		print(type(node_flavor.B_DIRECTORY_NODE))
-		self.ofp=BFilePanel(B_OPEN_PANEL,None,None,int(node_flavor.B_DIRECTORY_NODE)|int(node_flavor.B_FILE_NODE),True, None, None, True, True)
+		self.ofp=BFilePanel(B_OPEN_PANEL,None,None,node_flavor.B_ANY_NODE,True, None, None, True, True)
 		self.autoload=""
 		if args!=[]:
 			for f in args:
@@ -411,27 +479,75 @@ class HTPBZ2Window(BWindow):
 		
 		self.ofp.SetPanelDirectory(osdir)
 		self.ofp.SetSaveText(open_file)
+#	def launch_extractions(self,paths):
+#		for path in paths:
+#					self.ewip2.SetText("Decompressing BZip2 file...")
+#					suf="".join(Path(path).suffixes)
+#					out=os.path.basename(path[:-len(suf)])
+#					complout=self.output.Text()+"/"+out
+#					decompress_archive(path, complout)
 
 	def MessageReceived(self, msg):
 		if msg.what == 207:
 			self.opf=""
 			self.ofp.Show()
-			
+		elif msg.what == 107:
+			self.GoBtn.SetEnabled(True)
+			self.compelbox.Hide()
+			self.extrelbox.Hide()
+			self.box.Show()
+		elif msg.what == 66:
+			self.iwheel+=1
+			if self.iwheel==4:
+				self.iwheel=0
+			self.cantihalt.SetText(self.steps[self.iwheel])
+			self.eantihalt.SetText(self.steps[self.iwheel])
 		elif msg.what == 307:
 			self.fp.Show()
 		elif msg.what == 407:
 			self.settings_window = SettingsWindow()
 			self.settings_window.Show()
+		elif msg.what == 507:
+			self.cwip2.SetText("Parallel BZip2 compression...")
+		elif msg.what == 607:
+			self.ewip2.SetText("Extracting tar archive...")
+		elif msg.what == 707:
+			self.ewip2.SetText("Decompressing BZip2 file...")
 		elif msg.what == 1024:
 			self.list_autol=self.input.Text().split(",")
 			if self.rb1.Value():
-				create_compressed_archive(self.list_autol, self.output.Text())
+				find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
+				ent=BEntry(perc.Path()+"/HTPBZ2")
+				if not ent.Exists():
+					cmplvl=9
+				else:
+					ent.GetPath(perc)
+					confile=BPath(perc.Path()+'/config.ini',None,False)
+					ent=BEntry(confile.Path())
+					if ent.Exists():
+						Config.read(confile.Path())
+						cmplvl=int(ConfigSectionMap("System")["compression"])
+				self.GoBtn.SetEnabled(False)
+				self.box.Hide()
+				self.compelbox.Show()
+				self.cwip2.SetText("Creating tar archive...")
+				thr=Thread(target=create_compressed_archive,args=(self.list_autol,self.output.Text(),cmplvl,))
+				thr.start()
+				#create_compressed_archive(self.list_autol, self.output.Text(),cmplvl)
 			else:
 				paths=self.input.Text().split(",")
-				for path in paths:
-					suf="".join(Path(path).suffixes)
-					out=os.path.basename(path[:-len(suf)])
-					decompress_archive(path, self.output.Text()+"/"+out)
+				self.GoBtn.SetEnabled(False)
+				self.box.Hide()
+				self.extrelbox.Show()
+				Thread(target=launch_extractions,args=(paths,self.output.Text())).start()
+				#self.thr=Thread(target=self.launch_extractions,args=(paths,))
+				#self.thr.start()
+				#for path in paths:
+				#	self.ewip2.SetText("Decompressing BZip2 file...")
+				#	suf="".join(Path(path).suffixes)
+				#	out=os.path.basename(path[:-len(suf)])
+				#	complout=self.output.Text()+"/"+out
+				#	decompress_archive(path, complout)
 		elif msg.what == 191:
 			osdir="/boot/home/Desktop"
 			osfile="/boot/home/Desktop/output.tar.bz2"
@@ -465,7 +581,16 @@ class HTPBZ2Window(BWindow):
 					wind.Lock()
 					wind.Quit()
 		return BWindow.QuitRequested(self)
-		
+
+def launch_extractions(paths,outputxt):
+	for path in paths:
+		#self.ewip2.SetText("Decompressing BZip2 file...")
+		be_app.WindowAt(0).PostMessage(BMessage(707))
+		suf="".join(Path(path).suffixes)
+		out=os.path.basename(path[:-len(suf)])
+		complout=outputxt+"/"+out
+		decompress_archive(path, complout)
+
 def get_str_md5(txt):
 	return hashlib.md5(txt.encode('utf-8')).hexdigest()
 
@@ -753,22 +878,27 @@ def create_tar_with_attributes(input_paths, tar_file):
 						add_attributes_to_tar(tar, file_path)
 
 def create_compressed_archive(input_paths, output_file, block_size=1024*1024, compresslevel=9):
-    tar_file = output_file + '.tar'
-    create_tar_with_attributes(input_paths, tar_file)
-    parallel_compress_file(tar_file, output_file, block_size, compresslevel)
-    os.remove(tar_file)
+	tar_file = output_file + '.tar'
+	create_tar_with_attributes(input_paths, tar_file)
+	be_app.WindowAt(0).PostMessage(BMessage(507))
+	parallel_compress_file(tar_file, output_file, block_size, compresslevel)
+	os.remove(tar_file)
+	be_app.WindowAt(0).PostMessage(BMessage(107))
 
 def decompress_archive(input_file, output_dir, block_size=1024*1024):
-    tar_file = input_file + '.tar'
-    decompress_file(input_file, tar_file, block_size)
-    extract_tar_with_attributes(tar_file, output_dir)
-    os.remove(tar_file)
+	tar_file = input_file + '.tar'
+	decompress_file(input_file, tar_file, block_size)
+	be_app.WindowAt(0).PostMessage(BMessage(607))
+	extract_tar_with_attributes(tar_file, output_dir)
+	os.remove(tar_file)
+	be_app.WindowAt(0).PostMessage(BMessage(107))
 
 class App(BApplication):
 	def __init__(self):
 		BApplication.__init__(self, "application/x-python-HTPBZ2")
 		self.realargs=[]
 		self.cmd=""
+		self.SetPulseRate(1000000)
 	def ReadyToRun(self):
 		self.window = HTPBZ2Window(self.cmd,self.realargs)
 		self.window.Show()
@@ -826,9 +956,8 @@ class App(BApplication):
 #		msg.PrintToStream()
 #		BApplication.MessageReceived(self,msg)
 
-#	def Pulse(self):
-#		if self.window.enabletimer:
-#			be_app.WindowAt(0).PostMessage(BMessage(66))
+	def Pulse(self):
+		be_app.WindowAt(0).PostMessage(BMessage(66))
 
 
 def main():
