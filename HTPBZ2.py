@@ -156,7 +156,7 @@ class SystemView(BView):
 		fon_height_value=font_height()
 		self.GetFontHeight(fon_height_value)
 		r=BRect(chkb_bounds.right-8-fon.StringWidth("0"),15,chkb_bounds.right-4,18+fon.Size())
-		r.PrintToStream()
+		#r.PrintToStream()
 		#chkb_bounds.bottom-font_height_value.ascent,chkb_bounds.Width()/2+self.StringWidth("0")+4,chkb_bounds.bottom-1)
 		self.cmplvl_value = BStringView(r,"cmplvl_value","9")
 		self.cmplvl_value.SetFont(fon)
@@ -479,10 +479,13 @@ class HTPBZ2Window(BWindow):
 		self.fp.SetSaveText(osfile)
 		
 		self.ofp.SetPanelDirectory(osdir)
-		self.ofp.SetSaveText(open_file)
+		try:
+			self.ofp.SetSaveText(open_file)
+		except:
+			pass
 
 	def MessageReceived(self, msg):
-		msg.PrintToStream()
+		#msg.PrintToStream()
 		if msg.what == 207:
 			self.opf=""
 			self.ofp.Show()
@@ -557,11 +560,22 @@ class HTPBZ2Window(BWindow):
 				self.box.Hide()
 				self.compelbox.Show()
 				self.cwip2.SetText("Creating tar archive...")
-				thr=Thread(target=create_compressed_archive,args=(self.list_autol,self.output.Text(),cmplvl,))
+				fout=self.output.Text()
+				thr=Thread(target=create_compressed_archive,args=(self.list_autol,fout,cmplvl,))
 				thr.start()
 				#create_compressed_archive(self.list_autol, self.output.Text(),cmplvl)
 			else:
 				paths=self.input.Text().split(",")
+				for s in paths:
+					if s[-1]=="/":
+						s=s[:-1]
+				if self.output.Text()[-1]=="/":
+					self.output.SetText(self.output.Text()[:-1])
+				if self.output.Text()=="":
+					try:
+						self.output.SetText(os.path.dirname(paths[0]))
+					except:
+						self.output.SetText("/boot/home/Desktop")
 				self.GoBtn.SetEnabled(False)
 				self.box.Hide()
 				self.extrelbox.Show()
@@ -753,8 +767,8 @@ def extract_tar_with_attributes(tar_file, output_dir):
 									print(original_file, name, "checksum OK")
 								else:
 									print(original_file, name, "checksum Failed")
-							a=bytes_needed(attr_value)
-							attr_value=attr_value.to_bytes(a,byteorder=endianness)#'little')
+							#a=bytes_needed(attr_value)
+							attr_value=attr_value.to_bytes(8,byteorder=endianness)#'little')
 						elif ck == 'CSTR' or ck == 'MIMS':
 							attr_value=str.encode(attr_value)
 							if check_hash:
@@ -794,14 +808,17 @@ def extract_tar_with_attributes(tar_file, output_dir):
 						node.WriteAttr(name,attr_type,0,attr_value)
 				os.remove(attr_path)
 
-def add_attributes_to_tar(tar, path):
+def add_attributes_to_tar(tar, path,cutter):
 	global save_hash,endianness
+	#print("path in add_attributes_to_tar",path)
+	#print(os.path.basename(path))
 	nf=BNode(path)
-	try:
+	#try:
+	if True:
 		attributes=attr(nf)
-	except Exception as e:
-		print("skipping attributes for",path,"\n",e)
-		attributes=[]
+	#except Exception as e:
+	#	print("skipping attributes for",path,"\n",e)
+	#	attributes=[]
 	if len(attributes)>0:
 		attr_data = {}
 		for name, (attr_type, attr_size, attr_value) in attributes:
@@ -854,6 +871,7 @@ def add_attributes_to_tar(tar, path):
 					elif isinstance(attr_value[0],int):
 						if save_hash:
 							numb = bytes_needed(attr_value[0])
+							print("ripiego salvato in intero a "+str(numb*8)+"bit")
 							endianed_bytes = attr_value[0].to_bytes(numb,byteorder=endianness)
 							attr_hash = get_bytes_md5(endianed_bytes)
 						attr_value = str(attr_value[0])
@@ -888,31 +906,44 @@ def add_attributes_to_tar(tar, path):
 			#	print("skipping",name,get_type_string(attr_type),e)
 		attr_json = json.dumps(attr_data).encode('utf-8')
 		md5attr_json=str(get_bytes_md5(attr_json))
-		print(md5attr_json)#TODO: Check on extract this checksum
-		attr_info = tarfile.TarInfo(name=f"{path}.{md5attr_json}.attr")
+		#print(md5attr_json)#TODO: Check on extract this checksum
+		#attr_info = tarfile.TarInfo(name=f"{path}.{md5attr_json}.attr")
+		#print("salvo attributo come file", path)
+		#print("mentre cutter è",cutter)
+		newpath=path[path.find(cutter):]
+		#attr_info = tarfile.TarInfo(name=f"{path}.{md5attr_json}.attr")
+		attr_info = tarfile.TarInfo(name=f"{newpath}.{md5attr_json}.attr")
 		attr_info.size = len(attr_json)
 		tar.addfile(attr_info, io.BytesIO(attr_json))
 
 def create_tar_with_attributes(input_paths, tar_file):
 	with tarfile.open(tar_file, "w") as tar:
 		for input_path in input_paths:
+			#try:
+			#	print(os.path.basename(input_path))
+			#except:
+			#	print("no basename for",input_path)
+			basename=os.path.basename(input_path)
 			tar.add(input_path, arcname=os.path.basename(input_path))
 			if os.path.isfile(input_path):
-				add_attributes_to_tar(tar, input_path)
+				add_attributes_to_tar(tar, input_path,basename)
 			elif os.path.isdir(input_path):
-				add_attributes_to_tar(tar,input_path)
+				add_attributes_to_tar(tar,input_path,basename)
 				for root, _, files in os.walk(input_path):
 					for dir in _:
 						dir_path = os.path.join(root,dir)
 						#tar.add(dir_path, arcname=os.path.relpath(dir_path, start=input_path))
-						add_attributes_to_tar(tar,dir_path)
+						add_attributes_to_tar(tar,dir_path,basename)
 					for file in files:
 						file_path = os.path.join(root, file)
 						#tar.add(file_path, arcname=os.path.relpath(file_path, start=input_path))
-						add_attributes_to_tar(tar, file_path)
+						add_attributes_to_tar(tar, file_path,basename)
 
 def create_compressed_archive(input_paths, output_file, block_size=1024*1024, compresslevel=9):
 	tar_file = output_file + '.tar'
+	#if os.path.isabs(tar_file):
+	#	tar_file=os.path.basename(tar_file)
+	#print(tar_file)
 	create_tar_with_attributes(input_paths, tar_file)
 	be_app.WindowAt(0).PostMessage(BMessage(507))
 	parallel_compress_file(tar_file, output_file, block_size, compresslevel)
