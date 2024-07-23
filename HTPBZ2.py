@@ -22,6 +22,7 @@ from Be.Entry import entry_ref, get_ref_for_path
 from Be.StorageDefs import node_flavor
 from Be.TextView import text_run, text_run_array
 from Be.Slider import hash_mark_location
+from Be.TypeConstants import *
 import json
 import io
 import base64
@@ -479,18 +480,42 @@ class HTPBZ2Window(BWindow):
 		
 		self.ofp.SetPanelDirectory(osdir)
 		self.ofp.SetSaveText(open_file)
-#	def launch_extractions(self,paths):
-#		for path in paths:
-#					self.ewip2.SetText("Decompressing BZip2 file...")
-#					suf="".join(Path(path).suffixes)
-#					out=os.path.basename(path[:-len(suf)])
-#					complout=self.output.Text()+"/"+out
-#					decompress_archive(path, complout)
 
 	def MessageReceived(self, msg):
+		msg.PrintToStream()
 		if msg.what == 207:
 			self.opf=""
 			self.ofp.Show()
+		elif msg.what == struct.unpack('!l',b'DATA')[0]:
+			self.input.TextView().SelectAll()
+			self.input.TextView().Clear()
+			i=0
+			a=entry_ref()
+			while True:
+				try:
+					msg.FindRef("refs",i,a)
+					perc=BPath()
+					entr=BEntry(a)
+					if entr.Exists():
+						entr.GetPath(perc)
+						actualtxt=self.input.Text()
+						if actualtxt=="":
+							self.input.SetText(perc.Path())
+						else:
+							self.input.SetText(actualtxt+","+perc.Path())
+					else:
+						break
+					i+=1
+				except:
+					break
+		elif msg.what == 54173:
+			er=entry_ref()
+			self.fp.GetPanelDirectory(er)
+			eny=BEntry(er)
+			patho=BPath()
+			eny.GetPath(patho)
+			name = msg.FindString("name")
+			self.output.SetText(patho.Path()+"/"+name)
 		elif msg.what == 107:
 			self.GoBtn.SetEnabled(True)
 			self.compelbox.Hide()
@@ -516,6 +541,7 @@ class HTPBZ2Window(BWindow):
 		elif msg.what == 1024:
 			self.list_autol=self.input.Text().split(",")
 			if self.rb1.Value():
+				perc=BPath()
 				find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
 				ent=BEntry(perc.Path()+"/HTPBZ2")
 				if not ent.Exists():
@@ -555,8 +581,10 @@ class HTPBZ2Window(BWindow):
 			self.fp.SetPanelDirectory(osdir)
 			self.ofp.SetPanelDirectory(osdir)
 			self.fp.SetSaveText("output.tar.bz2")
-			self.input.SetText("")
-			self.output.SetText("")
+			self.input.TextView().SelectAll()
+			self.input.TextView().Clear()
+			self.output.TextView().SelectAll()
+			self.output.TextView().Clear()
 		elif msg.what == 181:
 			osdir="/boot/home/Desktop"
 			osfile="/boot/home/Desktop"
@@ -769,89 +797,95 @@ def extract_tar_with_attributes(tar_file, output_dir):
 def add_attributes_to_tar(tar, path):
 	global save_hash,endianness
 	nf=BNode(path)
-	attributes=attr(nf)
+	try:
+		attributes=attr(nf)
+	except Exception as e:
+		print("skipping attributes for",path,"\n",e)
+		attributes=[]
 	if len(attributes)>0:
 		attr_data = {}
 		for name, (attr_type, attr_size, attr_value) in attributes:
-			#print(name,get_type_string(attr_type))
-			if get_type_string(attr_type)=='RAWT':
-				if save_hash:
-					attr_hash = get_bytes_md5(attr_value[0])
-				attr_value = base64.b64encode(attr_value[0]).decode('utf-8')
-			elif get_type_string(attr_type)=='TIME':
-				if save_hash:
-					attr_hash = get_bytes_md5(int(attr_value[0].timestamp()).to_bytes(8,byteorder=endianness))#'little'))
-				attr_value=int(attr_value[0].timestamp())
-			elif get_type_string(attr_type)=='CSTR':
-				if save_hash:
-					attr_hash = get_str_md5(attr_value[0])
-				attr_value = attr_value[0]
-			elif get_type_string(attr_type)=='BOOL':
-				if save_hash:
-					attr_hash = get_bytes_md5(struct.pack('?',attr_value[0]))
-				attr_value = struct.pack('?',attr_value[0]).decode('utf-8')
-			elif get_type_string(attr_type) =='LONG':
-				if save_hash:
-					endianed_bytes = attr_value[0].to_bytes(4,byteorder=endianness)#'little')
-					attr_hash = get_bytes_md5(endianed_bytes)
-				attr_value = str(attr_value[0])
-			elif get_type_string(attr_type) =='LLNG':
-				if save_hash:
-					endianed_bytes = attr_value[0].to_bytes(8,byteorder=endianness)#'little')
-					attr_hash = get_bytes_md5(endianed_bytes)
-				attr_value = str(attr_value[0])
-			elif get_type_string(attr_type)=='FLOT':
-				Battr_value=struct.pack('<f',attr_value[0])
-				if save_hash:
-					attr_hash = get_bytes_md5(Battr_value)
-				attr_value = base64.b64encode(Battr_value).decode('utf-8')
-			elif get_type_string(attr_type)=='DBLE':
-				Battr_value=struct.pack('<d',attr_value[0])
-				if save_hash:
-					attr_hash = get_bytes_md5(Battr_value)
-				attr_value = base64.b64encode(Battr_value).decode('utf-8')
-			elif get_type_string(attr_type)=='MIMS':
-				if save_hash:
-					attr_hash = get_str_md5(attr_value[0])
-				attr_value = attr_value[0]
-			else: #ripiego
-				if isinstance(attr_value[0],str):
-					if save_hash:
-						attr_hash = get_str_md5(attr_value[0])
-					attr_value = attr_value[0]
-				elif isinstance(attr_value[0],int):
-					if save_hash:
-						numb = bytes_needed(attr_value[0])
-						endianed_bytes = attr_value[0].to_bytes(numb,byteorder=endianness)
-						attr_hash = get_bytes_md5(endianed_bytes)
-					attr_value = str(attr_value[0])
-				elif isinstance(attr_value[0],float):
-					Battr_value=struct.pack('<f',attr_value[0])
-					if save_hash:
-						attr_hash = get_bytes_md5(Battr_value)
-					attr_value = str(Battr_value)
-				#elif isinstance(attr_value[0],double): # there's no double in python
-				#	Battr_value=struct.pack('<d',attr_value[0])
-				#	if save_hash:
-				#		attr_hash = get_bytes_md5(Battr_value)
-				#	attr_value = str(Battr_value)
-				else:
+			#try:
+				if get_type_string(attr_type)=='RAWT':
 					if save_hash:
 						attr_hash = get_bytes_md5(attr_value[0])
 					attr_value = base64.b64encode(attr_value[0]).decode('utf-8')
-			if save_hash:
-				attr_data[name] = {
-					'type': attr_type,
-					'size': attr_size,
-					'value': attr_value,
-					'hash': attr_hash
-				}
-			else:
-				attr_data[name] = {
-					'type': attr_type,
-					'size': attr_size,
-					'value': attr_value
-				}
+				elif get_type_string(attr_type)=='TIME':
+					if save_hash:
+						attr_hash = get_bytes_md5(int(attr_value[0].timestamp()).to_bytes(8,byteorder=endianness))#'little'))
+					attr_value=int(attr_value[0].timestamp())
+				elif get_type_string(attr_type)=='CSTR':
+					if save_hash:
+						attr_hash = get_str_md5(attr_value[0])
+					attr_value = attr_value[0]
+				elif get_type_string(attr_type)=='BOOL':
+					if save_hash:
+						attr_hash = get_bytes_md5(struct.pack('?',attr_value[0]))
+					attr_value = struct.pack('?',attr_value[0]).decode('utf-8')
+				elif get_type_string(attr_type) =='LONG':
+					if save_hash:
+						endianed_bytes = attr_value[0].to_bytes(4,byteorder=endianness)#'little')
+						attr_hash = get_bytes_md5(endianed_bytes)
+					attr_value = str(attr_value[0])
+				elif get_type_string(attr_type) =='LLNG':
+					if save_hash:
+						endianed_bytes = attr_value[0].to_bytes(8,byteorder=endianness)#'little')
+						attr_hash = get_bytes_md5(endianed_bytes)
+					attr_value = str(attr_value[0])
+				elif get_type_string(attr_type)=='FLOT':
+					Battr_value=struct.pack('<f',attr_value[0])
+					if save_hash:
+						attr_hash = get_bytes_md5(Battr_value)
+					attr_value = base64.b64encode(Battr_value).decode('utf-8')
+				elif get_type_string(attr_type)=='DBLE':
+					Battr_value=struct.pack('<d',attr_value[0])
+					if save_hash:
+						attr_hash = get_bytes_md5(Battr_value)
+					attr_value = base64.b64encode(Battr_value).decode('utf-8')
+				elif get_type_string(attr_type)=='MIMS':
+					if save_hash:
+						attr_hash = get_str_md5(attr_value[0])
+					attr_value = attr_value[0]
+				else: #ripiego
+					if isinstance(attr_value[0],str):
+						if save_hash:
+							attr_hash = get_str_md5(attr_value[0])
+						attr_value = attr_value[0]
+					elif isinstance(attr_value[0],int):
+						if save_hash:
+							numb = bytes_needed(attr_value[0])
+							endianed_bytes = attr_value[0].to_bytes(numb,byteorder=endianness)
+							attr_hash = get_bytes_md5(endianed_bytes)
+						attr_value = str(attr_value[0])
+					elif isinstance(attr_value[0],float):
+						Battr_value=struct.pack('<f',attr_value[0])
+						if save_hash:
+							attr_hash = get_bytes_md5(Battr_value)
+						attr_value = str(Battr_value)
+					#elif isinstance(attr_value[0],double): # there's no double in python
+					#	Battr_value=struct.pack('<d',attr_value[0])
+					#	if save_hash:
+					#		attr_hash = get_bytes_md5(Battr_value)
+					#	attr_value = str(Battr_value)
+					else:
+						if save_hash:
+							attr_hash = get_bytes_md5(attr_value[0])
+						attr_value = base64.b64encode(attr_value[0]).decode('utf-8')
+				if save_hash:
+					attr_data[name] = {
+						'type': attr_type,
+						'size': attr_size,
+						'value': attr_value,
+						'hash': attr_hash
+					}
+				else:
+					attr_data[name] = {
+						'type': attr_type,
+						'size': attr_size,
+						'value': attr_value
+					}
+			#except Exception as e:
+			#	print("skipping",name,get_type_string(attr_type),e)
 		attr_json = json.dumps(attr_data).encode('utf-8')
 		md5attr_json=str(get_bytes_md5(attr_json))
 		print(md5attr_json)#TODO: Check on extract this checksum
