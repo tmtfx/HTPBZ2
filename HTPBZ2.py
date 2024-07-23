@@ -810,15 +810,12 @@ def extract_tar_with_attributes(tar_file, output_dir):
 
 def add_attributes_to_tar(tar, path,cutter):
 	global save_hash,endianness
-	#print("path in add_attributes_to_tar",path)
-	#print(os.path.basename(path))
 	nf=BNode(path)
-	#try:
-	if True:
+	try:
 		attributes=attr(nf)
-	#except Exception as e:
-	#	print("skipping attributes for",path,"\n",e)
-	#	attributes=[]
+	except Exception as e:
+		print("skipping attributes for",path,"\n",e)
+		attributes=[]
 	if len(attributes)>0:
 		attr_data = {}
 		for name, (attr_type, attr_size, attr_value) in attributes:
@@ -907,9 +904,6 @@ def add_attributes_to_tar(tar, path,cutter):
 		attr_json = json.dumps(attr_data).encode('utf-8')
 		md5attr_json=str(get_bytes_md5(attr_json))
 		#print(md5attr_json)#TODO: Check on extract this checksum
-		#attr_info = tarfile.TarInfo(name=f"{path}.{md5attr_json}.attr")
-		#print("salvo attributo come file", path)
-		#print("mentre cutter è",cutter)
 		newpath=path[path.find(cutter):]
 		#attr_info = tarfile.TarInfo(name=f"{path}.{md5attr_json}.attr")
 		attr_info = tarfile.TarInfo(name=f"{newpath}.{md5attr_json}.attr")
@@ -941,9 +935,6 @@ def create_tar_with_attributes(input_paths, tar_file):
 
 def create_compressed_archive(input_paths, output_file, block_size=1024*1024, compresslevel=9):
 	tar_file = output_file + '.tar'
-	#if os.path.isabs(tar_file):
-	#	tar_file=os.path.basename(tar_file)
-	#print(tar_file)
 	create_tar_with_attributes(input_paths, tar_file)
 	be_app.WindowAt(0).PostMessage(BMessage(507))
 	parallel_compress_file(tar_file, output_file, block_size, compresslevel)
