@@ -38,7 +38,7 @@ Config=configparser.ConfigParser()
 global ver,status,rev
 ver="1"
 status="alpha"
-rev="20240723"
+rev="20240726"
 author="Fabio Tomat"
 
 def ConfigSectionMap(section):
@@ -663,7 +663,7 @@ def parallel_compress_file(input_file, output_file, block_size=1024*1024, compre
 	file_size = os.path.getsize(input_file)
 	#print(file_size,block_size)
 	# Se il file è più piccolo del block_size, comprimi senza parallellismo
-	if file_size < 2*block_size:
+	if file_size < block_size:
 		with open(input_file, 'rb') as f:
 			data = f.read()
 		compressed_data = bz2.compress(data, compresslevel)
@@ -691,49 +691,6 @@ def parallel_compress_file(input_file, output_file, block_size=1024*1024, compre
 		with open(output_file, 'wb') as f:
 			for compressed_block in compressed_blocks:
 				f.write(compressed_block)
-
-# def parallel_compress_file(input_file, output_file, block_size=1024*1024, compresslevel=9):
-    # Ottieni il numero di CPU virtuali disponibili
-    # num_cpus = multiprocessing.cpu_count()
-    # 
-    # Leggi il file di input e suddividilo in blocchi
-    # with open(input_file, 'rb') as f:
-        # blocks = []
-        # while True:
-            # block = f.read(block_size)
-            # if not block:
-                # break
-            # blocks.append(block)
-    
-    # Crea un pool di processi con un numero di processi pari al numero di CPU disponibili
-    # with multiprocessing.Pool(num_cpus) as pool:
-        # compress_partial = partial(compress_block, compresslevel=compresslevel)
-        # compressed_blocks = pool.map(compress_partial, blocks)
-    
-    # Scrivi i blocchi compressi nel file di output
-    # with open(output_file, 'wb') as f:
-        # for compressed_block in compressed_blocks:
-            # f.write(compressed_block)
-
-
-# def parallel_compress_file(input_file, output_file, block_size=1024*1024, compresslevel=9):
-    # with open(input_file, 'rb') as f:
-        # blocks = []
-        # while True:
-            # block = f.read(block_size)
-            # if not block:
-                # break
-            # blocks.append(block)
-    
-    # pool = multiprocessing.Pool()
-    # compress_partial = partial(compress_block, compresslevel=compresslevel)
-    # compressed_blocks = pool.map(compress_partial, blocks)
-    # pool.close()
-    # pool.join()
-
-    # with open(output_file, 'wb') as f:
-        # for compressed_block in compressed_blocks:
-            # f.write(compressed_block)
 
 def extract_tar_with_attributes(tar_file, output_dir):
 	global check_hash,endianness
@@ -943,11 +900,9 @@ def create_tar_with_attributes(input_paths, tar_file):
 				for root, _, files in os.walk(input_path):
 					for dir in _:
 						dir_path = os.path.join(root,dir)
-						#tar.add(dir_path, arcname=os.path.relpath(dir_path, start=input_path))
 						add_attributes_to_tar(tar,dir_path,basename)
 					for file in files:
 						file_path = os.path.join(root, file)
-						#tar.add(file_path, arcname=os.path.relpath(file_path, start=input_path))
 						add_attributes_to_tar(tar, file_path,basename)
 
 def create_compressed_archive(input_paths, output_file, block_size=1024*1024, compresslevel=9):
