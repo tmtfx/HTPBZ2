@@ -884,8 +884,8 @@ def add_attributes_to_tar(tar, path,cutter):
 		#attr_info = tarfile.TarInfo(name=f"{path}.{md5attr_json}.attr")
 		attr_info = tarfile.TarInfo(name=f"{newpath}.{md5attr_json}.attr")
 		attr_info.size = len(attr_json)
-		with open("jsondata.txt", 'w') as f:
-			f.write(attr_json.decode("utf-8"))
+		#with open("jsondata.txt", 'w') as f:
+		#	f.write(attr_json.decode("utf-8"))
 		tar.addfile(attr_info, io.BytesIO(attr_json))
 
 def create_tar_with_attributes(input_paths, tar_file):
