@@ -514,6 +514,7 @@ class HTPBZ2Window(BWindow):
 		elif msg.what == 1024:
 			self.list_autol=self.input.Text().split(",")
 			if self.rb1.Value():
+				block_size=1024*1024
 				perc=BPath()
 				find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
 				ent=BEntry(perc.Path()+"/HTPBZ2")
@@ -526,12 +527,14 @@ class HTPBZ2Window(BWindow):
 					if ent.Exists():
 						Config.read(confile.Path())
 						cmplvl=int(ConfigSectionMap("System")["compression"])
+						block_size=int(ConfigSectionMap("System")["block_size"])
 				self.GoBtn.SetEnabled(False)
 				self.box.Hide()
 				self.compelbox.Show()
 				self.cwip2.SetText("Creating tar archive...")
 				fout=self.output.Text()
-				thr=Thread(target=create_compressed_archive,args=(self.list_autol,fout,cmplvl,))
+				#print(input_file, output_file, block_size, compresslevel)
+				thr=Thread(target=create_compressed_archive,args=(self.list_autol,fout,block_size,cmplvl,))
 				thr.start()
 			else:
 				paths=self.input.Text().split(",")
@@ -656,23 +659,81 @@ def compress_block(block, compresslevel):
     return bz2.compress(block, compresslevel=compresslevel)
 
 def parallel_compress_file(input_file, output_file, block_size=1024*1024, compresslevel=9):
-    with open(input_file, 'rb') as f:
-        blocks = []
-        while True:
-            block = f.read(block_size)
-            if not block:
-                break
-            blocks.append(block)
-    
-    pool = multiprocessing.Pool()
-    compress_partial = partial(compress_block, compresslevel=compresslevel)
-    compressed_blocks = pool.map(compress_partial, blocks)
-    pool.close()
-    pool.join()
+	# Ottieni la dimensione del file
+	file_size = os.path.getsize(input_file)
+	#print(file_size,block_size)
+	# Se il file è più piccolo del block_size, comprimi senza parallellismo
+	if file_size < 2*block_size:
+		with open(input_file, 'rb') as f:
+			data = f.read()
+		compressed_data = bz2.compress(data, compresslevel)
+		with open(output_file, 'wb') as f:
+			f.write(compressed_data)
+	else:
+		# Ottieni il numero di CPU virtuali disponibili
+		num_cpus = multiprocessing.cpu_count()
+		
+		# Leggi il file di input e suddividilo in blocchi
+		with open(input_file, 'rb') as f:
+			blocks = []
+			while True:
+				block = f.read(block_size)
+				if not block:
+					break
+				blocks.append(block)
 
-    with open(output_file, 'wb') as f:
-        for compressed_block in compressed_blocks:
-            f.write(compressed_block)
+		# Crea un pool di processi con un numero di processi pari al numero di CPU disponibili
+		with multiprocessing.Pool(num_cpus) as pool:
+			compress_partial = partial(compress_block, compresslevel=compresslevel)
+			compressed_blocks = pool.map(compress_partial, blocks)
+        
+		# Scrivi i blocchi compressi nel file di output
+		with open(output_file, 'wb') as f:
+			for compressed_block in compressed_blocks:
+				f.write(compressed_block)
+
+# def parallel_compress_file(input_file, output_file, block_size=1024*1024, compresslevel=9):
+    # Ottieni il numero di CPU virtuali disponibili
+    # num_cpus = multiprocessing.cpu_count()
+    # 
+    # Leggi il file di input e suddividilo in blocchi
+    # with open(input_file, 'rb') as f:
+        # blocks = []
+        # while True:
+            # block = f.read(block_size)
+            # if not block:
+                # break
+            # blocks.append(block)
+    
+    # Crea un pool di processi con un numero di processi pari al numero di CPU disponibili
+    # with multiprocessing.Pool(num_cpus) as pool:
+        # compress_partial = partial(compress_block, compresslevel=compresslevel)
+        # compressed_blocks = pool.map(compress_partial, blocks)
+    
+    # Scrivi i blocchi compressi nel file di output
+    # with open(output_file, 'wb') as f:
+        # for compressed_block in compressed_blocks:
+            # f.write(compressed_block)
+
+
+# def parallel_compress_file(input_file, output_file, block_size=1024*1024, compresslevel=9):
+    # with open(input_file, 'rb') as f:
+        # blocks = []
+        # while True:
+            # block = f.read(block_size)
+            # if not block:
+                # break
+            # blocks.append(block)
+    
+    # pool = multiprocessing.Pool()
+    # compress_partial = partial(compress_block, compresslevel=compresslevel)
+    # compressed_blocks = pool.map(compress_partial, blocks)
+    # pool.close()
+    # pool.join()
+
+    # with open(output_file, 'wb') as f:
+        # for compressed_block in compressed_blocks:
+            # f.write(compressed_block)
 
 def extract_tar_with_attributes(tar_file, output_dir):
 	global check_hash,endianness
@@ -866,6 +927,8 @@ def add_attributes_to_tar(tar, path,cutter):
 		#attr_info = tarfile.TarInfo(name=f"{path}.{md5attr_json}.attr")
 		attr_info = tarfile.TarInfo(name=f"{newpath}.{md5attr_json}.attr")
 		attr_info.size = len(attr_json)
+		with open("jsondata.txt", 'w') as f:
+			f.write(attr_json.decode("utf-8"))
 		tar.addfile(attr_info, io.BytesIO(attr_json))
 
 def create_tar_with_attributes(input_paths, tar_file):
@@ -1006,6 +1069,7 @@ if __name__ == "__main__":
 		check_hash=False
 		Config.set('System','savesum', "False")
 		Config.set('System','compression', "9")
+		Config.set('System','block_size', "1048576")
 		save_hash=False
 		Config.write(cfgfile)
 		cfgfile.close()
