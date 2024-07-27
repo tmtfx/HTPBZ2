@@ -27,7 +27,7 @@ Config=configparser.ConfigParser()
 global ver,status,rev
 ver="1"
 status="alpha"
-rev="20240726"
+rev="20240727"
 author="Fabio Tomat"
 
 def ConfigSectionMap(section):
@@ -417,7 +417,7 @@ class HTPBZ2Window(BWindow):
 				self.rb2.SetValue(1)
 				self.list_autol=self.autoload.split(',')
 				open_file=os.path.basename(self.list_autol[0])
-				osdir=os.path.dirname(self.list_autol[0])
+				osdir=os.path.dirname(os.path.abspath(self.list_autol[0]))
 				osfile=""
 				osfileout=""
 				for i in self.list_autol:
@@ -507,18 +507,22 @@ class HTPBZ2Window(BWindow):
 			self.ewip2.SetText("Extracting tar archive...")
 		elif msg.what == 707:
 			self.ewip2.SetText("Decompressing BZip2 file...")
+		elif msg.what == 714:
+			saytxt=msg.FindString("error")
+			infoA=BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
+			self.tmpWind.append(infoA)
+			infoA.Go()
 		elif msg.what == 1024:
-			
 			if timings:
 				self.stime=time.time()
 			self.list_autol=self.input.Text().split(",")
 			if self.rb1.Value():
-				block_size=1024*1024
 				perc=BPath()
 				find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
 				ent=BEntry(perc.Path()+"/HTPBZ2")
 				if not ent.Exists():
 					cmplvl=9
+					block_size=1024*1024
 				else:
 					ent.GetPath(perc)
 					confile=BPath(perc.Path()+'/config.ini',None,False)
@@ -527,11 +531,19 @@ class HTPBZ2Window(BWindow):
 						Config.read(confile.Path())
 						cmplvl=int(ConfigSectionMap("System")["compression"])
 						block_size=int(ConfigSectionMap("System")["block_size"])
+					else:
+						cmplvl=9
+						block_size=1024*1024
 				self.GoBtn.SetEnabled(False)
 				self.box.Hide()
 				self.compelbox.Show()
 				self.cwip2.SetText("Creating tar archive...")
+				
 				fout=self.output.Text()
+				if fout=="":
+					#fout=os.path.dirname(self.list_autol[0])
+					fout=os.getcwd()+"/"+os.path.basename(self.list_autol[0])+".tar.bz2"
+				print("comprimo in",fout)
 				#print(input_file, output_file, block_size, compresslevel)
 				thr=Thread(target=create_compressed_archive,args=(self.list_autol,fout,block_size,cmplvl,))
 				thr.start()
@@ -540,13 +552,14 @@ class HTPBZ2Window(BWindow):
 				for s in paths:
 					if s[-1]=="/":
 						s=s[:-1]
-				if self.output.Text()[-1]=="/":
-					self.output.SetText(self.output.Text()[:-1])
 				if self.output.Text()=="":
 					try:
-						self.output.SetText(os.path.dirname(paths[0]))
+						self.output.SetText(os.path.dirname(os.path.abspath(paths[0])))
 					except:
 						self.output.SetText("/boot/home/Desktop")
+				else:
+					if self.output.Text()[-1]=="/":
+						self.output.SetText(self.output.Text()[:-1])
 				self.GoBtn.SetEnabled(False)
 				self.box.Hide()
 				self.extrelbox.Show()
@@ -694,8 +707,20 @@ def parallel_compress_file(input_file, output_file, block_size=1024*1024, compre
 def extract_tar_with_attributes(tar_file, output_dir):
 	global check_hash,endianness
 	with tarfile.open(tar_file, "r") as tar:
-		tar.extractall(output_dir)
+		#print(tar.getmembers())
+		#tar.extractall(output_dir)
 		for member in tar.getmembers():
+			try:
+				member_path = os.path.join(output_dir, member.name)
+				if not os.path.abspath(member_path).startswith(os.path.abspath(output_dir)):
+					raise Exception("Tentativo di estrazione fuori dalla directory di destinazione: {}".format(member.name))
+				tar.extract(member, output_dir)
+			except Exception as e:
+				txt=(f"Errore durante l'estrazione del file {member.name}: {e}")
+				almsg=BMessage(714)
+				almsg.AddString("error",txt)
+				be_app.WindowAt(0).PostMessage(almsg)
+				break
 			if member.name.endswith('.attr'):
 				attr_path = os.path.join(output_dir, member.name)
 				original_file= attr_path[:-38] #Rimuove sia .attr che .{hash}
@@ -933,24 +958,19 @@ class App(BApplication):
 		global timings
 		timings=False
 		realargs=args
-		print(args)
 		if args[1][-9:]=="HTPBZ2.py":
 			realargs.pop(1)
 			realargs.pop(0)
 			if len(realargs)>1:
-				print(realargs)
 				remit=[]
 				for ra in realargs:
-					print(ra)
 					if len(ra)==2 and ra[0]=="-":
 						if ra[1] in ["c","d"]:
 							self.cmd=ra[1]
 							remit.append(ra)
 							#realargs.remove(ra)
-							print(self.cmd)
 						if ra[1] == "t":
 							timings=True
-							print("timings True")
 							remit.append(ra)
 							#realargs.remove(ra)
 				for remi in remit:
