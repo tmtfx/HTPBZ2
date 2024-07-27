@@ -319,6 +319,7 @@ class HTPBZ2Window(BWindow):
 	opf=""
 	tmpWind=[]
 	def __init__(self,cmd,args):
+		global timings
 		BWindow.__init__(self, BRect(200,170,800,278), "Tar Parallel-BZip2 Compressor/Decompressor with attributes", window_type.B_TITLED_WINDOW, B_NOT_RESIZABLE |B_QUIT_ON_WINDOW_CLOSE)
 		self.bckgnd = BView(self.Bounds(), "bckgnd_View", 8, 20000000)
 		rect=self.bckgnd.Bounds()
@@ -479,15 +480,16 @@ class HTPBZ2Window(BWindow):
 			name = msg.FindString("name")
 			self.output.SetText(patho.Path()+"/"+name)
 		elif msg.what == 107:
-			self.etime=time.time()
+			if timings:
+				self.etime=time.time()
+				saytxt="Elapsed time: "+str(self.etime-self.stime)
+				infoA=BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_INFO_ALERT)
+				self.tmpWind.append(infoA)
+				infoA.Go()
 			self.GoBtn.SetEnabled(True)
 			self.compelbox.Hide()
 			self.extrelbox.Hide()
 			self.box.Show()
-			saytxt="Elapsed time: "+str(self.etime-self.stime)
-			infoA=BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_INFO_ALERT)
-			self.tmpWind.append(infoA)
-			infoA.Go()
 		elif msg.what == 66:
 			self.iwheel+=1
 			if self.iwheel==4:
@@ -506,7 +508,9 @@ class HTPBZ2Window(BWindow):
 		elif msg.what == 707:
 			self.ewip2.SetText("Decompressing BZip2 file...")
 		elif msg.what == 1024:
-			self.stime=time.time()
+			
+			if timings:
+				self.stime=time.time()
 			self.list_autol=self.input.Text().split(",")
 			if self.rb1.Value():
 				block_size=1024*1024
@@ -926,16 +930,37 @@ class App(BApplication):
 		self.window = HTPBZ2Window(self.cmd,self.realargs)
 		self.window.Show()
 	def ArgvReceived(self,num,args):# argvReceived is executed before readytorun
+		global timings
+		timings=False
 		realargs=args
+		print(args)
 		if args[1][-9:]=="HTPBZ2.py":
 			realargs.pop(1)
 			realargs.pop(0)
 			if len(realargs)>1:
-				if len(realargs[0])==2:
-					if realargs[0][0]=="-" and realargs[0][1] in ["c","d"]:
-						self.cmd=realargs[0][1]
-						realargs.pop(0)
-						self.realargs=realargs
+				print(realargs)
+				remit=[]
+				for ra in realargs:
+					print(ra)
+					if len(ra)==2 and ra[0]=="-":
+						if ra[1] in ["c","d"]:
+							self.cmd=ra[1]
+							remit.append(ra)
+							#realargs.remove(ra)
+							print(self.cmd)
+						if ra[1] == "t":
+							timings=True
+							print("timings True")
+							remit.append(ra)
+							#realargs.remove(ra)
+				for remi in remit:
+					realargs.remove(remi)
+				self.realargs=realargs
+				# if len(realargs[0])==2:
+					# if realargs[0][0]=="-" and realargs[0][1] in ["c","d"]:
+						# self.cmd=realargs[0][1]
+						# realargs.pop(0)
+						# self.realargs=realargs
 	def RefsReceived(self, msg):
 		if msg.what == B_REFS_RECEIVED:
 			i = 0
