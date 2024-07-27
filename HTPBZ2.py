@@ -1,7 +1,5 @@
 #!/boot/system/bin/python3
-import os,sys
-import tarfile
-import bz2
+import os,sys,tarfile,bz2,io,base64,datetime,struct,math,hashlib,json,configparser,time
 import multiprocessing
 from functools import partial
 from Be import BApplication, BWindow, BView, BNode,BRadioButton,BButton,BMessage, window_type, B_NOT_RESIZABLE, B_CLOSE_ON_ESCAPE, B_QUIT_ON_WINDOW_CLOSE, BTextControl, BAlert,BListView, BScrollView,BListItem,BStringItem,BTextView,BRect, BBox, BFont, InterfaceDefs, BPath, BDirectory, BEntry,BStringView,BSlider
@@ -20,17 +18,8 @@ from Be.Application import *
 from Be.Font import font_height,B_OUTLINED_FACE,B_ITALIC_FACE
 from Be.Entry import entry_ref, get_ref_for_path
 from Be.StorageDefs import node_flavor
-from Be.TextView import text_run, text_run_array
 from Be.Slider import hash_mark_location
 from Be.TypeConstants import *
-import json
-import io
-import base64
-import datetime
-import struct
-import math
-import hashlib
-import configparser
 from pathlib import Path
 from threading import Thread
 
@@ -490,10 +479,15 @@ class HTPBZ2Window(BWindow):
 			name = msg.FindString("name")
 			self.output.SetText(patho.Path()+"/"+name)
 		elif msg.what == 107:
+			self.etime=time.time()
 			self.GoBtn.SetEnabled(True)
 			self.compelbox.Hide()
 			self.extrelbox.Hide()
 			self.box.Show()
+			saytxt="Elapsed time: "+str(self.etime-self.stime)
+			infoA=BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_INFO_ALERT)
+			self.tmpWind.append(infoA)
+			infoA.Go()
 		elif msg.what == 66:
 			self.iwheel+=1
 			if self.iwheel==4:
@@ -512,6 +506,7 @@ class HTPBZ2Window(BWindow):
 		elif msg.what == 707:
 			self.ewip2.SetText("Decompressing BZip2 file...")
 		elif msg.what == 1024:
+			self.stime=time.time()
 			self.list_autol=self.input.Text().split(",")
 			if self.rb1.Value():
 				block_size=1024*1024
@@ -580,12 +575,12 @@ class HTPBZ2Window(BWindow):
 		elif msg.what == 1800:
 			self.list_autol=self.input.Text().split(",")
 	def QuitRequested(self):
-		wnum = be_app.CountWindows()
-		if wnum>1:
-			if len(self.tmpWind)>0:
-				for wind in self.tmpWind:
-					wind.Lock()
-					wind.Quit()
+		#wnum = be_app.CountWindows()
+		#if wnum>1:
+		#	if len(self.tmpWind)>0:
+		#		for wind in self.tmpWind:
+		#			wind.Lock()
+		#			wind.Quit()
 		return BWindow.QuitRequested(self)
 
 def launch_extractions(paths,outputxt):
