@@ -50,7 +50,7 @@ if [ -e DecompressTarBZ2.tar.bz2 ]
 then
 	./HTPBZ2.py -d DecompressTarBZ2.tar.bz2 -g
 	if [ -e DecompressTarBZ2 ]; then
-		mv DecompressTarBZ2 /boot/home/config/non-packaged/bin/
+		mv DecompressTarBZ2/DecompressTarBZ2 /boot/home/config/non-packaged/bin/
 		ret6=$?
 	fi
 else
