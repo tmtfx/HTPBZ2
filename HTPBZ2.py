@@ -43,17 +43,6 @@ def ConfigSectionMap(section):
             dict1[option] = None
     return dict1
 
-class ScrollView:
-	HiWhat = 53 #Doppioclick
-	SectionSelection = 54
-	def __init__(self, rect, name):
-		self.lv = BListView(rect, name, list_view_type.B_SINGLE_SELECTION_LIST)
-		self.lv.SetResizingMode(B_FOLLOW_TOP_BOTTOM)
-		self.lv.SetSelectionMessage(BMessage(self.SectionSelection))
-		self.lv.SetInvocationMessage(BMessage(self.HiWhat))
-		self.sv = BScrollView(name, self.lv,B_FOLLOW_NONE,0,False,False,border_style.B_FANCY_BORDER)
-		self.sv.SetResizingMode(B_FOLLOW_TOP_BOTTOM)
-
 class AboutView(BView):
 	def __init__(self,frame):
 		global rev,status,ver,author
@@ -406,9 +395,11 @@ class HTPBZ2Window(BWindow):
 				if BEntry(a).Exists():
 					osdir=os.path.dirname(os.path.abspath(a))
 					if len(self.list_autol)>1:
-						osfile=os.path.basename(os.path.abspath(osdir))+".tar.bz2"
+						#osfile=os.path.basename(os.path.abspath(osdir))+".tar.bz2"
+						osfile=osdir+"/"+os.path.basename(os.path.abspath(osdir))+".tar.bz2"
 					else:
-						osfile=os.path.basename(os.path.abspath(a))+".tar.bz2"
+						#osfile=os.path.basename(os.path.abspath(a))+".tar.bz2"
+						osfile=os.path.abspath(a)+".tar.bz2"
 				else:
 					osdir=os.getcwd()
 					if len(self.list_autol)>1:
@@ -555,10 +546,9 @@ class HTPBZ2Window(BWindow):
 				fout=self.output.Text()
 				if fout=="":
 					#fout=os.path.dirname(self.list_autol[0])
-					fout=os.getcwd()+"/"+os.path.basename(self.list_autol[0])+".tar.bz2"
-				#print("comprimo in",fout)
-				#print(input_file, output_file, block_size, compresslevel)
-				thr=Thread(target=create_compressed_archive,args=(self.list_autol,fout,block_size,cmplvl,))
+					#fout=os.getcwd()+"/"+os.path.basename(self.list_autol[0])+".tar.bz2"
+					fout=os.path.abspath(self.list_autol[0])+".tar.bz2"
+				thr=Thread(target=create_compressed_archive,args=(self.list_autol,fout,block_size,cmplvl,self.autorun,))
 				thr.start()
 			else:
 				paths=self.input.Text().split(",")
@@ -576,7 +566,7 @@ class HTPBZ2Window(BWindow):
 				self.GoBtn.SetEnabled(False)
 				self.box.Hide()
 				self.extrelbox.Show()
-				Thread(target=launch_extractions,args=(paths,self.output.Text(),self.autorun)).start()
+				Thread(target=launch_extractions,args=(paths,self.output.Text(),self.autorun,)).start()
 			#if self.autorun:
 				#be_app.WindowAt(0).PostMessage(B_QUIT_REQUESTED)
 			self.autorun=False
@@ -626,6 +616,7 @@ def launch_extractions(paths,outputxt,autoclose):
 		decompress_archive(path, complout)
 	if autoclose:
 		be_app.WindowAt(0).PostMessage(B_QUIT_REQUESTED)
+		
 def get_str_md5(txt):
 	return hashlib.md5(txt.encode('utf-8')).hexdigest()
 
@@ -691,7 +682,6 @@ def compress_block(block, compresslevel):
 def parallel_compress_file(input_file, output_file, block_size=1024*1024, compresslevel=9):
 	# Ottieni la dimensione del file
 	file_size = os.path.getsize(input_file)
-	#print(file_size,block_size)
 	# Se il file è più piccolo del block_size, comprimi senza parallellismo
 	if file_size < block_size:
 		with open(input_file, 'rb') as f:
@@ -725,7 +715,6 @@ def parallel_compress_file(input_file, output_file, block_size=1024*1024, compre
 def extract_tar_with_attributes(tar_file, output_dir):
 	global check_hash,endianness
 	with tarfile.open(tar_file, "r") as tar:
-		#print(tar.getmembers())
 		#tar.extractall(output_dir)
 		for member in tar.getmembers():
 			try:
@@ -837,7 +826,6 @@ def add_attributes_to_tar(tar, path,cutter):
 	if len(attributes)>0:
 		attr_data = {}
 		for name, (attr_type, attr_size, attr_value) in attributes:
-			#try:
 				if get_type_string(attr_type)=='RAWT':
 					if save_hash:
 						attr_hash = get_bytes_md5(attr_value[0])
@@ -917,8 +905,6 @@ def add_attributes_to_tar(tar, path,cutter):
 						'size': attr_size,
 						'value': attr_value
 					}
-			#except Exception as e:
-			#	print("skipping",name,get_type_string(attr_type),e)
 		attr_json = json.dumps(attr_data).encode('utf-8')
 		md5attr_json=str(get_bytes_md5(attr_json))
 		#print(md5attr_json)#TODO: Check on extract this checksum
@@ -947,13 +933,15 @@ def create_tar_with_attributes(input_paths, tar_file):
 						file_path = os.path.join(root, file)
 						add_attributes_to_tar(tar, file_path,basename)
 
-def create_compressed_archive(input_paths, output_file, block_size=1024*1024, compresslevel=9):
+def create_compressed_archive(input_paths, output_file, block_size=1024*1024, compresslevel=9,autoclose=False):
 	tar_file = output_file + '.tar'
 	create_tar_with_attributes(input_paths, tar_file)
 	be_app.WindowAt(0).PostMessage(BMessage(507))
 	parallel_compress_file(tar_file, output_file, block_size, compresslevel)
 	os.remove(tar_file)
 	be_app.WindowAt(0).PostMessage(BMessage(107))
+	if autoclose:
+		be_app.WindowAt(0).PostMessage(B_QUIT_REQUESTED)
 
 def decompress_archive(input_file, output_dir, block_size=1024*1024):
 	tar_file = input_file + '.tar'
@@ -986,19 +974,12 @@ class App(BApplication):
 						if ra[1] in ["c","d","g"]:
 							self.cmd.append(ra[1])
 							remit.append(ra)
-							#realargs.remove(ra)
 						if ra[1] == "t":
 							timings=True
 							remit.append(ra)
-							#realargs.remove(ra)
 				for remi in remit:
 					realargs.remove(remi)
 				self.realargs=realargs
-				# if len(realargs[0])==2:
-					# if realargs[0][0]=="-" and realargs[0][1] in ["c","d"]:
-						# self.cmd=realargs[0][1]
-						# realargs.pop(0)
-						# self.realargs=realargs
 	def RefsReceived(self, msg):
 		if msg.what == B_REFS_RECEIVED:
 			i = 0
@@ -1030,9 +1011,6 @@ class App(BApplication):
 			messaggio.AddString("name",e)
 			be_app.WindowAt(0).PostMessage(messaggio)
 			return
-#		elif msg.what == B_ARGV_RECEIVED:
-#			self.asku=BAlert('cle', "ricevuto argv", 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_STOP_ALERT)
-#			self.asku.Go()
 		BApplication.MessageReceived(self,msg)
 
 	def Pulse(self):
@@ -1057,7 +1035,6 @@ if __name__ == "__main__":
 	ent=BEntry(confile.Path())
 	if ent.Exists():
 		Config.read(confile.Path())
-		#sezione=Config.sections()
 		for key in Config["System"]:
 			if key == "endianness":
 				endianness = ConfigSectionMap("System")["endianness"]
