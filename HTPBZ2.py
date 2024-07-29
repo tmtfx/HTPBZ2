@@ -27,7 +27,7 @@ Config=configparser.ConfigParser()
 global ver,status,rev
 ver="1"
 status="alpha"
-rev="20240727"
+rev="20240729"
 author="Fabio Tomat"
 
 def ConfigSectionMap(section):
@@ -318,7 +318,7 @@ class SettingsWindow(BWindow):
 class HTPBZ2Window(BWindow):
 	opf=""
 	tmpWind=[]
-	def __init__(self,cmd,args):
+	def __init__(self,cmds,args):
 		global timings
 		BWindow.__init__(self, BRect(200,170,800,278), "Tar Parallel-BZip2 Compressor/Decompressor with attributes", window_type.B_TITLED_WINDOW, B_NOT_RESIZABLE |B_QUIT_ON_WINDOW_CLOSE)
 		self.bckgnd = BView(self.Bounds(), "bckgnd_View", 8, 20000000)
@@ -385,6 +385,10 @@ class HTPBZ2Window(BWindow):
 		self.fp=BFilePanel(B_SAVE_PANEL,None,None,0,False, None, None, True, True)
 		self.ofp=BFilePanel(B_OPEN_PANEL,None,None,node_flavor.B_ANY_NODE,True, None, None, True, True)
 		self.autoload=""
+		self.autorun=False
+		self.setcmd=False
+		osdir="/boot/home/Desktop"
+		osfile="/boot/home/Desktop/output.tar.bz2"
 		if args!=[]:
 			for f in args:
 				if self.autoload=="":
@@ -392,6 +396,7 @@ class HTPBZ2Window(BWindow):
 				else:
 					self.autoload+=","+f
 			self.input.SetText(self.autoload)
+		for cmd in cmds:
 			if cmd=="c":
 				self.rb1.SetValue(1)
 				self.rb2.SetValue(0)
@@ -411,6 +416,9 @@ class HTPBZ2Window(BWindow):
 					else:
 						osfile=os.path.basename(os.path.abspath(a))+".tar.bz2"
 				self.output.SetText(osfile)
+				self.setcmd=True
+				if self.autorun and self.autoload!="":
+					be_app.WindowAt(0).PostMessage(1024)
 			elif cmd=="d":
 				self.fp=BFilePanel(B_OPEN_PANEL,None,None,node_flavor.B_DIRECTORY_NODE,False, None, None, True, True)
 				self.rb1.SetValue(0)
@@ -432,9 +440,14 @@ class HTPBZ2Window(BWindow):
 						else:
 							osfileout+=","+os.getcwd()
 				self.output.SetText(osfileout)
-		else:
-			osdir="/boot/home/Desktop"
-			osfile="/boot/home/Desktop/output.tar.bz2"
+				self.setcmd=True
+				if self.autorun and self.autoload!="":
+					be_app.WindowAt(0).PostMessage(1024)
+			elif cmd=="g":
+				if not self.autorun:
+					self.autorun=True
+					if self.setcmd and self.autoload!="":
+						be_app.WindowAt(0).PostMessage(1024)
 		
 		self.fp.SetPanelDirectory(osdir)
 		self.fp.SetSaveText(osfile)
@@ -543,7 +556,7 @@ class HTPBZ2Window(BWindow):
 				if fout=="":
 					#fout=os.path.dirname(self.list_autol[0])
 					fout=os.getcwd()+"/"+os.path.basename(self.list_autol[0])+".tar.bz2"
-				print("comprimo in",fout)
+				#print("comprimo in",fout)
 				#print(input_file, output_file, block_size, compresslevel)
 				thr=Thread(target=create_compressed_archive,args=(self.list_autol,fout,block_size,cmplvl,))
 				thr.start()
@@ -563,7 +576,11 @@ class HTPBZ2Window(BWindow):
 				self.GoBtn.SetEnabled(False)
 				self.box.Hide()
 				self.extrelbox.Show()
-				Thread(target=launch_extractions,args=(paths,self.output.Text())).start()
+				Thread(target=launch_extractions,args=(paths,self.output.Text(),self.autorun)).start()
+			#if self.autorun:
+				#be_app.WindowAt(0).PostMessage(B_QUIT_REQUESTED)
+			self.autorun=False
+			self.setcmd=False
 		elif msg.what == 191:
 			osdir="/boot/home/Desktop"
 			osfile="/boot/home/Desktop/output.tar.bz2"
@@ -600,14 +617,15 @@ class HTPBZ2Window(BWindow):
 		#			wind.Quit()
 		return BWindow.QuitRequested(self)
 
-def launch_extractions(paths,outputxt):
+def launch_extractions(paths,outputxt,autoclose):
 	for path in paths:
 		be_app.WindowAt(0).PostMessage(BMessage(707))
 		suf="".join(Path(path).suffixes)
 		out=os.path.basename(path[:-len(suf)])
 		complout=outputxt+"/"+out
 		decompress_archive(path, complout)
-
+	if autoclose:
+		be_app.WindowAt(0).PostMessage(B_QUIT_REQUESTED)
 def get_str_md5(txt):
 	return hashlib.md5(txt.encode('utf-8')).hexdigest()
 
@@ -949,7 +967,7 @@ class App(BApplication):
 	def __init__(self):
 		BApplication.__init__(self, "application/x-python-HTPBZ2")
 		self.realargs=[]
-		self.cmd=""
+		self.cmd=[]
 		self.SetPulseRate(1000000)
 	def ReadyToRun(self):
 		self.window = HTPBZ2Window(self.cmd,self.realargs)
@@ -965,8 +983,8 @@ class App(BApplication):
 				remit=[]
 				for ra in realargs:
 					if len(ra)==2 and ra[0]=="-":
-						if ra[1] in ["c","d"]:
-							self.cmd=ra[1]
+						if ra[1] in ["c","d","g"]:
+							self.cmd.append(ra[1])
 							remit.append(ra)
 							#realargs.remove(ra)
 						if ra[1] == "t":
