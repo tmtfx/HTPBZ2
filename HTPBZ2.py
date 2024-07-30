@@ -22,6 +22,7 @@ from Be.Slider import hash_mark_location
 from Be.TypeConstants import *
 from pathlib import Path
 from threading import Thread
+# from pathvalidate import sanitize_filepath
 
 Config=configparser.ConfigParser()
 global ver,status,rev
@@ -372,6 +373,8 @@ class HTPBZ2Window(BWindow):
 		self.box.AddChild(self.input,None)
 		self.box.AddChild(self.output,None)
 		self.fp=BFilePanel(B_SAVE_PANEL,None,None,0,False, None, None, True, True)
+		self.commutedfp=False
+		self.clicked=False
 		self.ofp=BFilePanel(B_OPEN_PANEL,None,None,node_flavor.B_ANY_NODE,True, None, None, True, True)
 		self.autoload=""
 		self.autorun=False
@@ -380,6 +383,7 @@ class HTPBZ2Window(BWindow):
 		osfile="/boot/home/Desktop/output.tar.bz2"
 		if args!=[]:
 			for f in args:
+				#f=sanitize_filepath(f)
 				if self.autoload=="":
 					self.autoload+=f
 				else:
@@ -387,6 +391,7 @@ class HTPBZ2Window(BWindow):
 			self.input.SetText(self.autoload)
 		for cmd in cmds:
 			if cmd=="c":
+				self.commutedfp=False
 				self.rb1.SetValue(1)
 				self.rb2.SetValue(0)
 				self.list_autol=self.autoload.split(',')
@@ -412,6 +417,7 @@ class HTPBZ2Window(BWindow):
 					be_app.WindowAt(0).PostMessage(1024)
 			elif cmd=="d":
 				self.fp=BFilePanel(B_OPEN_PANEL,None,None,node_flavor.B_DIRECTORY_NODE,False, None, None, True, True)
+				self.commutedfp=True
 				self.rb1.SetValue(0)
 				self.rb2.SetValue(1)
 				self.list_autol=self.autoload.split(',')
@@ -501,6 +507,7 @@ class HTPBZ2Window(BWindow):
 			self.cantihalt.SetText(self.steps[self.iwheel])
 			self.eantihalt.SetText(self.steps[self.iwheel])
 		elif msg.what == 307:
+			self.clicked=True
 			self.fp.Show()
 		elif msg.what == 407:
 			self.settings_window = SettingsWindow()
@@ -590,12 +597,16 @@ class HTPBZ2Window(BWindow):
 			self.ofp.SetPanelDirectory(osdir)
 		elif msg.what == 45371:
 			percors=msg.FindString("path")
-			if self.opf == "":
-				self.opf="".join(percors)
+			if self.commutedfp and self.clicked:
+				self.output.SetText(percors)
+				self.clicked=False
 			else:
-				self.opf=self.opf+","+percors
-			self.input.SetText(self.opf)
-			self.list_autol=self.opf.split(",")
+				if self.opf == "":
+					self.opf="".join(percors)
+				else:
+					self.opf=self.opf+","+percors
+				self.input.SetText(self.opf)
+				self.list_autol=self.opf.split(",")
 		elif msg.what == 1800:
 			self.list_autol=self.input.Text().split(",")
 	def QuitRequested(self):
@@ -920,6 +931,8 @@ def create_tar_with_attributes(input_paths, tar_file):
 	with tarfile.open(tar_file, "w") as tar:
 		for input_path in input_paths:
 			basename=os.path.basename(input_path)
+			#real_input_path=os.path.abspath(input_path)
+			#input_path=real_input_path
 			tar.add(input_path, arcname=os.path.basename(input_path))
 			if os.path.isfile(input_path):
 				add_attributes_to_tar(tar, input_path,basename)
@@ -934,6 +947,10 @@ def create_tar_with_attributes(input_paths, tar_file):
 						add_attributes_to_tar(tar, file_path,basename)
 
 def create_compressed_archive(input_paths, output_file, block_size=1024*1024, compresslevel=9,autoclose=False):
+	if os.path.isdir(output_file): #compensate luser that indicates a directory
+		if output_file[-1]=="/":
+			output_file=output_file[:-1]
+			output_file=os.path.join(output_file,output_file.split("/")[-1])
 	tar_file = output_file + '.tar'
 	create_tar_with_attributes(input_paths, tar_file)
 	be_app.WindowAt(0).PostMessage(BMessage(507))
@@ -962,11 +979,13 @@ class App(BApplication):
 		self.window.Show()
 	def ArgvReceived(self,num,args):# argvReceived is executed before readytorun
 		global timings
+		#print("args:",args)
 		timings=False
 		realargs=args
 		if args[1][-9:]=="HTPBZ2.py":
 			realargs.pop(1)
 			realargs.pop(0)
+			#print("Realargs",realargs)
 			if len(realargs)>1:
 				remit=[]
 				for ra in realargs:
