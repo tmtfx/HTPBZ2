@@ -60,15 +60,16 @@ fi
 if [ $ret2 -lt 1 ]
 then
 	echo Installation of Haiku-PyAPI OK
+	if [ $ret7 -lt 1 ]
+	then
+		echo Copy of Haiku-PyAPI libraries in python site-packages OK
+	else
+		echo Copy of Haiku-PyAPI libraries in python site-packages FAILED
+	fi
 else
 	echo Installation of Haiku-PyAPI FAILED
 fi
-if [ $ret7 -lt 1 ]
-then
-	echo Copy of Haiku-PyAPI libraries in python site-packages OK
-else
-	echo Copy of Haiku-PyAPI libraries in python site-packages FAILED
-fi
+
 if [ $ret4 -lt 1 ] 
 then
         echo Installation of HTPBZ2 OK
