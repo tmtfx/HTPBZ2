@@ -412,7 +412,7 @@ class HTPBZ2Window(BWindow):
 						osfile=os.path.basename(os.path.abspath(osdir))+".tar.bz2"
 					else:
 						osfile=os.path.basename(os.path.abspath(a))+".tar.bz2"
-				if os.access(osfile, os.W_OK):
+				if os.access(os.path.dirname(osfile), os.W_OK):
 					self.output.SetText(osfile)
 				else:
 					osfile="/boot/home/Desktop/"+os.path.basename(osfile)
@@ -560,7 +560,7 @@ class HTPBZ2Window(BWindow):
 					#fout=os.path.dirname(self.list_autol[0])
 					#fout=os.getcwd()+"/"+os.path.basename(self.list_autol[0])+".tar.bz2"
 					supposedpath=os.path.abspath(self.list_autol[0])+".tar.bz2"
-					if os.access(supposedpath, os.W_OK):
+					if os.access(os.path.dirname(supposedpath), os.W_OK):
 						fout=supposedpath
 					else:
 						fout="/boot/home/Desktop/"+os.path.basename(self.list_autol[0])+".tar.bz2"
