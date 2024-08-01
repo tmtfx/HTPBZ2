@@ -28,7 +28,7 @@ Config=configparser.ConfigParser()
 global ver,status,rev
 ver="1"
 status="alpha"
-rev="20240729"
+rev="20240801"
 author="Fabio Tomat"
 
 def ConfigSectionMap(section):
@@ -384,6 +384,7 @@ class HTPBZ2Window(BWindow):
 		if args!=[]:
 			for f in args:
 				#f=sanitize_filepath(f)
+				f=os.path.abspath(f)
 				if self.autoload=="":
 					self.autoload+=f
 				else:
@@ -411,7 +412,11 @@ class HTPBZ2Window(BWindow):
 						osfile=os.path.basename(os.path.abspath(osdir))+".tar.bz2"
 					else:
 						osfile=os.path.basename(os.path.abspath(a))+".tar.bz2"
-				self.output.SetText(osfile)
+				if os.access(osfile, os.W_OK):
+					self.output.SetText(osfile)
+				else:
+					osfile="/boot/home/Desktop/"+os.path.basename(osfile)
+					self.output.SetText(osfile)
 				self.setcmd=True
 				if self.autorun and self.autoload!="":
 					be_app.WindowAt(0).PostMessage(1024)
@@ -554,7 +559,16 @@ class HTPBZ2Window(BWindow):
 				if fout=="":
 					#fout=os.path.dirname(self.list_autol[0])
 					#fout=os.getcwd()+"/"+os.path.basename(self.list_autol[0])+".tar.bz2"
-					fout=os.path.abspath(self.list_autol[0])+".tar.bz2"
+					supposedpath=os.path.abspath(self.list_autol[0])+".tar.bz2"
+					if os.access(supposedpath, os.W_OK):
+						fout=supposedpath
+					else:
+						fout="/boot/home/Desktop/"+os.path.basename(self.list_autol[0])+".tar.bz2"
+				else:
+					if not os.access(fout, os.W_OK):
+						supposedpath="/boot/home/Desktop/"+os.path.basename(fout)+".tar.bz2"
+						self.output.SetText(supposedpath)
+						fout=supposedpath
 				thr=Thread(target=create_compressed_archive,args=(self.list_autol,fout,block_size,cmplvl,self.autorun,))
 				thr.start()
 			else:
@@ -564,12 +578,20 @@ class HTPBZ2Window(BWindow):
 						s=s[:-1]
 				if self.output.Text()=="":
 					try:
-						self.output.SetText(os.path.dirname(os.path.abspath(paths[0])))
+						supposedpath=os.path.dirname(os.path.abspath(paths[0]))
+						if os.access(supposedpath, os.W_OK):
+							self.output.SetText(supposedpath)
+						else:
+							self.output.SetText("/boot/home/Desktop")
 					except:
 						self.output.SetText("/boot/home/Desktop")
 				else:
-					if self.output.Text()[-1]=="/":
-						self.output.SetText(self.output.Text()[:-1])
+					supposedpath = self.output.Text()
+					if os.access(supposedpath, os.W_OK):
+						if supposedpath[-1]=="/":
+							self.output.SetText(supposedpath[:-1])
+					else:
+						self.output.SetText("/boot/home")
 				self.GoBtn.SetEnabled(False)
 				self.box.Hide()
 				self.extrelbox.Show()
@@ -919,7 +941,8 @@ def add_attributes_to_tar(tar, path,cutter):
 		attr_json = json.dumps(attr_data).encode('utf-8')
 		md5attr_json=str(get_bytes_md5(attr_json))
 		#print(md5attr_json)#TODO: Check on extract this checksum
-		newpath=path[path.find(cutter):]
+		#newpath=path[path.find(cutter):]
+		newpath=os.path.relpath(path,cutter)
 		#attr_info = tarfile.TarInfo(name=f"{path}.{md5attr_json}.attr")
 		attr_info = tarfile.TarInfo(name=f"{newpath}.{md5attr_json}.attr")
 		attr_info.size = len(attr_json)
@@ -927,24 +950,41 @@ def add_attributes_to_tar(tar, path,cutter):
 		#	f.write(attr_json.decode("utf-8"))
 		tar.addfile(attr_info, io.BytesIO(attr_json))
 
+def find_common_root(paths):
+    try:
+        common_root = os.path.commonpath(paths)
+        return common_root
+    except ValueError:
+        # Handle the case where there is no common path
+        return None
+
 def create_tar_with_attributes(input_paths, tar_file):
 	with tarfile.open(tar_file, "w") as tar:
+		cutter=find_common_root(input_paths)
 		for input_path in input_paths:
-			basename=os.path.basename(input_path)
+			if cutter==None:
+				cutter=os.path.dirname(input_path)+"/"
+			relative_path = os.path.relpath(input_path, cutter)
+			#basename=os.path.basename(input_path)
 			#real_input_path=os.path.abspath(input_path)
 			#input_path=real_input_path
-			tar.add(input_path, arcname=os.path.basename(input_path))
+			#tar.add(input_path, arcname=os.path.basename(input_path))
+			tar.add(input_path, arcname=relative_path)
 			if os.path.isfile(input_path):
-				add_attributes_to_tar(tar, input_path,basename)
+				#add_attributes_to_tar(tar, input_path,basename)
+				add_attributes_to_tar(tar, input_path,cutter)
 			elif os.path.isdir(input_path):
-				add_attributes_to_tar(tar,input_path,basename)
+				#add_attributes_to_tar(tar,input_path,basename)
+				add_attributes_to_tar(tar,input_path,cutter)
 				for root, _, files in os.walk(input_path):
 					for dir in _:
 						dir_path = os.path.join(root,dir)
-						add_attributes_to_tar(tar,dir_path,basename)
+						add_attributes_to_tar(tar,dir_path,cutter)
+						#add_attributes_to_tar(tar,dir_path,basename)
 					for file in files:
 						file_path = os.path.join(root, file)
-						add_attributes_to_tar(tar, file_path,basename)
+						add_attributes_to_tar(tar, file_path,cutter)
+						#add_attributes_to_tar(tar, file_path,basename)
 
 def create_compressed_archive(input_paths, output_file, block_size=1024*1024, compresslevel=9,autoclose=False):
 	if os.path.isdir(output_file): #compensate luser that indicates a directory
@@ -959,6 +999,13 @@ def create_compressed_archive(input_paths, output_file, block_size=1024*1024, co
 	be_app.WindowAt(0).PostMessage(BMessage(107))
 	if autoclose:
 		be_app.WindowAt(0).PostMessage(B_QUIT_REQUESTED)
+
+#def ensure_dir_exists(directory):
+#	if not os.path.exists(directory):
+#		try:
+#			os.makedirs(directory)
+#		except:
+#			pass
 
 def decompress_archive(input_file, output_dir, block_size=1024*1024):
 	tar_file = input_file + '.tar'
