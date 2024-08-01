@@ -565,7 +565,7 @@ class HTPBZ2Window(BWindow):
 					else:
 						fout="/boot/home/Desktop/"+os.path.basename(self.list_autol[0])+".tar.bz2"
 				else:
-					if not os.access(fout, os.W_OK):
+					if not os.access(os.path.dirname(fout), os.W_OK):
 						supposedpath="/boot/home/Desktop/"+os.path.basename(fout)+".tar.bz2"
 						self.output.SetText(supposedpath)
 						fout=supposedpath
