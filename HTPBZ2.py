@@ -44,6 +44,17 @@ def ConfigSectionMap(section):
             dict1[option] = None
     return dict1
 
+class ScrollView:
+	HiWhat = 53 #Doppioclick
+	SectionSelection = 54
+	def __init__(self, rect, name):
+		self.lv = BListView(rect, name, list_view_type.B_SINGLE_SELECTION_LIST)
+		self.lv.SetResizingMode(B_FOLLOW_TOP_BOTTOM)
+		self.lv.SetSelectionMessage(BMessage(self.SectionSelection))
+		self.lv.SetInvocationMessage(BMessage(self.HiWhat))
+		self.sv = BScrollView(name, self.lv,B_FOLLOW_NONE,0,False,False,border_style.B_FANCY_BORDER)
+		self.sv.SetResizingMode(B_FOLLOW_TOP_BOTTOM)
+
 class AboutView(BView):
 	def __init__(self,frame):
 		global rev,status,ver,author
@@ -124,7 +135,7 @@ class SystemView(BView):
 		self.checksumbox.AddChild(self.cmplvl_value,None)
 		txt="Save checksums in archives"
 		self.ckb_savesum=BCheckBox(BRect(4,4,38+self.StringWidth(txt),font_height_value.ascent+8),"save_chksum",txt,BMessage(1600))
-		txt="Check files upon extraction"
+		txt="Check files on extraction"
 		self.ckb_checksum=BCheckBox(BRect(4,12+font_height_value.ascent,38+self.StringWidth(txt),16+font_height_value.ascent*2),"check_sum",txt,BMessage(1700))
 		self.checksumbox.AddChild(self.ckb_savesum,None)
 		self.checksumbox.AddChild(self.ckb_checksum,None)
