@@ -2,6 +2,7 @@
 import os,sys,tarfile,bz2,io,base64,datetime,struct,math,hashlib,json,configparser,time
 import multiprocessing
 from functools import partial
+import concurrent.futures
 from Be import BApplication, BWindow, BView, BNode,BRadioButton,BButton,BMessage, window_type, B_NOT_RESIZABLE, B_CLOSE_ON_ESCAPE, B_QUIT_ON_WINDOW_CLOSE, BTextControl, BAlert,BListView, BScrollView,BListItem,BStringItem,BTextView,BRect, BBox, BFont, InterfaceDefs, BPath, BDirectory, BEntry,BStringView,BSlider
 from Be import BFile,BCheckBox
 from Be.FindDirectory import *
@@ -28,7 +29,7 @@ Config=configparser.ConfigParser()
 global ver,status,rev
 ver="1"
 status="alpha"
-rev="20240801"
+rev="20240802"
 author="Fabio Tomat"
 
 def ConfigSectionMap(section):
@@ -124,6 +125,7 @@ class SystemView(BView):
 		r=BRect(4,4,self.StringWidth(txt)+8,font_height_value.ascent+8)
 		self.sys_endian=BStringView(r,"sys_endianness",txt)
 		self.endianbox.AddChild(self.sys_endian,None)
+		#TODO: CheckBox per estrarre bz2 in ram o su disco
 		chkb_bounds=self.checksumbox.Bounds()
 		fon=BFont()
 		fon.SetSize(32)
@@ -428,6 +430,7 @@ class HTPBZ2Window(BWindow):
 				else:
 					osfile="/boot/home/Desktop/"+os.path.basename(osfile)
 					self.output.SetText(osfile)
+				self.output.SetText(osfile)
 				self.setcmd=True
 				if self.autorun and self.autoload!="":
 					be_app.WindowAt(0).PostMessage(1024)
@@ -568,8 +571,9 @@ class HTPBZ2Window(BWindow):
 				
 				fout=self.output.Text()
 				if fout=="":
-					#fout=os.path.dirname(self.list_autol[0])
-					#fout=os.getcwd()+"/"+os.path.basename(self.list_autol[0])+".tar.bz2"
+					##fout=os.path.dirname(self.list_autol[0])
+					##fout=os.getcwd()+"/"+os.path.basename(self.list_autol[0])+".tar.bz2"
+					#fout=os.path.abspath(self.list_autol[0])+".tar.bz2"
 					supposedpath=os.path.abspath(self.list_autol[0])+".tar.bz2"
 					if os.access(os.path.dirname(supposedpath), os.W_OK):
 						fout=supposedpath
@@ -589,6 +593,7 @@ class HTPBZ2Window(BWindow):
 						s=s[:-1]
 				if self.output.Text()=="":
 					try:
+						#self.output.SetText(os.path.dirname(os.path.abspath(paths[0])))
 						supposedpath=os.path.dirname(os.path.abspath(paths[0]))
 						if os.access(supposedpath, os.W_OK):
 							self.output.SetText(supposedpath)
@@ -597,6 +602,8 @@ class HTPBZ2Window(BWindow):
 					except:
 						self.output.SetText("/boot/home/Desktop")
 				else:
+					#if self.output.Text()[-1]=="/":
+					#	self.output.SetText(self.output.Text()[:-1])
 					supposedpath = self.output.Text()
 					if os.access(supposedpath, os.W_OK):
 						if supposedpath[-1]=="/":
@@ -657,7 +664,7 @@ def launch_extractions(paths,outputxt,autoclose):
 		suf="".join(Path(path).suffixes)
 		out=os.path.basename(path[:-len(suf)])
 		complout=outputxt+"/"+out
-		decompress_archive(path, complout)
+		decompress_archive(path, complout,inram=False)
 	if autoclose:
 		be_app.WindowAt(0).PostMessage(B_QUIT_REQUESTED)
 		
@@ -707,14 +714,6 @@ def attr(node):
 				nfo = pnfo[0]
 			al.append((a,(nfo.type,nfo.size,node.ReadAttr(a, nfo.type, 0, None,nfo.size))))
 	return al
-	
-def decompress_file(input_file, output_file, block_size=1024*1024):
-	with bz2.BZ2File(input_file, 'rb') as f_in, open(output_file, 'wb') as f_out:
-		while True:
-			block = f_in.read(block_size)
-			if not block:
-				break
-			f_out.write(block)
 
 def get_type_string(value):
 	type_string = struct.pack('>I', value).decode('utf-8')
@@ -724,7 +723,6 @@ def compress_block(block, compresslevel):
     return bz2.compress(block, compresslevel=compresslevel)
 
 def parallel_compress_file(input_file, output_file, block_size=1024*1024, compresslevel=9):
-	# Ottieni la dimensione del file
 	file_size = os.path.getsize(input_file)
 	# Se il file è più piccolo del block_size, comprimi senza parallellismo
 	if file_size < block_size:
@@ -734,10 +732,7 @@ def parallel_compress_file(input_file, output_file, block_size=1024*1024, compre
 		with open(output_file, 'wb') as f:
 			f.write(compressed_data)
 	else:
-		# Ottieni il numero di CPU virtuali disponibili
 		num_cpus = multiprocessing.cpu_count()
-		
-		# Leggi il file di input e suddividilo in blocchi
 		with open(input_file, 'rb') as f:
 			blocks = []
 			while True:
@@ -745,119 +740,14 @@ def parallel_compress_file(input_file, output_file, block_size=1024*1024, compre
 				if not block:
 					break
 				blocks.append(block)
-
-		# Crea un pool di processi con un numero di processi pari al numero di CPU disponibili
+		
 		with multiprocessing.Pool(num_cpus) as pool:
 			compress_partial = partial(compress_block, compresslevel=compresslevel)
 			compressed_blocks = pool.map(compress_partial, blocks)
         
-		# Scrivi i blocchi compressi nel file di output
 		with open(output_file, 'wb') as f:
 			for compressed_block in compressed_blocks:
 				f.write(compressed_block)
-
-def extract_tar_with_attributes(tar_file, output_dir):
-	global check_hash,endianness
-	with tarfile.open(tar_file, "r") as tar:
-		#tar.extractall(output_dir)
-		for member in tar.getmembers():
-			try:
-				member_path = os.path.join(output_dir, member.name)
-				if not os.path.abspath(member_path).startswith(os.path.abspath(output_dir)):
-					raise Exception("Tentativo di estrazione fuori dalla directory di destinazione: {}".format(member.name))
-				tar.extract(member, output_dir)
-			except Exception as e:
-				txt=(f"Errore durante l'estrazione del file {member.name}: {e}")
-				almsg=BMessage(714)
-				almsg.AddString("error",txt)
-				be_app.WindowAt(0).PostMessage(almsg)
-				break
-			if member.name.endswith('.attr'):
-				attr_path = os.path.join(output_dir, member.name)
-				original_file= attr_path[:-38] #Rimuove sia .attr che .{hash}
-				with open(attr_path, 'r') as f:
-					attr_data = json.load(f)
-					for name, details in attr_data.items():
-						attr_value = details['value']
-						attr_type = details['type']
-						attr_size = details['size']
-						if check_hash:
-							try:
-								attr_hash = details['hash']
-							except:
-								check_hash=False
-								#TODO: print to log missing hash on original_file, attribute name
-						node=BNode(original_file)
-						ck=get_type_string(details['type'])
-						if ck == 'RAWT':
-							attr_value = base64.b64decode(attr_value)
-							if check_hash:
-								if get_bytes_md5(attr_value)==attr_hash:
-									print(original_file, name, "checksum OK")
-								else:
-									print(original_file, name, "checksum Failed")
-						elif ck == 'LONG':
-							attr_value = int(attr_value)
-							attr_value = attr_value.to_bytes(4,byteorder=endianness)#'little')
-							if check_hash:
-								if get_bytes_md5(attr_value) == attr_hash:
-									print(original_file, name, "checksum OK")
-								else:
-									print(original_file, name, "checksum Failed")
-						elif ck == 'LLNG':
-							attr_value = int(attr_value)
-							attr_value = attr_value.to_bytes(8,byteorder=endianness)#'little')
-							if check_hash:
-								if get_bytes_md5(attr_value) == attr_hash:
-									print(original_file, name, "checksum OK")
-								else:
-									print(original_file, name, "checksum Failed")
-						elif ck == 'TIME':
-							if check_hash:
-								if get_bytes_md5(int(attr_value).to_bytes(8,byteorder=endianness))==attr_hash:#'little'))==attr_hash:
-									print(original_file, name, "checksum OK")
-								else:
-									print(original_file, name, "checksum Failed")
-							#a=bytes_needed(attr_value)
-							attr_value=attr_value.to_bytes(8,byteorder=endianness)#'little')
-						elif ck == 'CSTR' or ck == 'MIMS':
-							attr_value=str.encode(attr_value)
-							if check_hash:
-								if get_str_md5(attr_value)==attr_hash:
-									print(original_file, name, "checksum OK")
-								else:
-									print(original_file, name, "checksum Failed")
-							
-						elif ck == 'BOOL':
-							attr_value=bytes(attr_value,'utf-8')
-							if check_hash:
-								if get_bytes_md5(attr_value)==attr_hash:
-									print(original_file, name, "checksum OK")
-								else:
-									print(original_file, name, "checksum8 Failed")
-						elif ck == 'FLOT':
-							attr_value=base64.b64decode(attr_value)
-							if check_hash:
-								if get_bytes_md5(attr_value)==attr_hash:
-									print(original_file, name, "checksum OK")
-								else:
-									print(original_file, name, "checksum Failed")
-						elif ck == 'DBLE':
-							attr_value=base64.b64decode(attr_value)
-							if check_hash:
-								if get_bytes_md5(attr_value)==attr_hash:
-									print(original_file, name, "checksum OK")
-								else:
-									print(original_file, name, "checksum Failed")
-						else: #ripiego?
-							attr_value = base64.b64decode(attr_value)
-							if check_hash:
-								if get_bytes_md5(attr_value)==attr_hash:
-									print(original_file, name, "checksum OK")
-								else:
-									print(original_file, name, "checksum Failed")
-						node.WriteAttr(name,attr_type,0,attr_value)
-				os.remove(attr_path)
 
 def add_attributes_to_tar(tar, path,cutter):
 	global save_hash,endianness
@@ -953,6 +843,7 @@ def add_attributes_to_tar(tar, path,cutter):
 		md5attr_json=str(get_bytes_md5(attr_json))
 		#print(md5attr_json)#TODO: Check on extract this checksum
 		#newpath=path[path.find(cutter):]
+	#	newpath=path.replace(cutter,"")
 		newpath=os.path.relpath(path,cutter)
 		#attr_info = tarfile.TarInfo(name=f"{path}.{md5attr_json}.attr")
 		attr_info = tarfile.TarInfo(name=f"{newpath}.{md5attr_json}.attr")
@@ -976,26 +867,18 @@ def create_tar_with_attributes(input_paths, tar_file):
 			if cutter==None:
 				cutter=os.path.dirname(input_path)+"/"
 			relative_path = os.path.relpath(input_path, cutter)
-			#basename=os.path.basename(input_path)
-			#real_input_path=os.path.abspath(input_path)
-			#input_path=real_input_path
-			#tar.add(input_path, arcname=os.path.basename(input_path))
 			tar.add(input_path, arcname=relative_path)
 			if os.path.isfile(input_path):
-				#add_attributes_to_tar(tar, input_path,basename)
 				add_attributes_to_tar(tar, input_path,cutter)
 			elif os.path.isdir(input_path):
-				#add_attributes_to_tar(tar,input_path,basename)
 				add_attributes_to_tar(tar,input_path,cutter)
 				for root, _, files in os.walk(input_path):
 					for dir in _:
 						dir_path = os.path.join(root,dir)
 						add_attributes_to_tar(tar,dir_path,cutter)
-						#add_attributes_to_tar(tar,dir_path,basename)
 					for file in files:
 						file_path = os.path.join(root, file)
 						add_attributes_to_tar(tar, file_path,cutter)
-						#add_attributes_to_tar(tar, file_path,basename)
 
 def create_compressed_archive(input_paths, output_file, block_size=1024*1024, compresslevel=9,autoclose=False):
 	if os.path.isdir(output_file): #compensate luser that indicates a directory
@@ -1011,19 +894,277 @@ def create_compressed_archive(input_paths, output_file, block_size=1024*1024, co
 	if autoclose:
 		be_app.WindowAt(0).PostMessage(B_QUIT_REQUESTED)
 
-#def ensure_dir_exists(directory):
-#	if not os.path.exists(directory):
-#		try:
-#			os.makedirs(directory)
-#		except:
-#			pass
+def decompress_bz2(input_file):
+    with bz2.BZ2File(input_file, 'rb') as file:
+        return file.read()
 
-def decompress_archive(input_file, output_dir, block_size=1024*1024):
+	
+def decompress__bz2_in_file(input_file, output_file, block_size=1024*1024):
+	with bz2.BZ2File(input_file, 'rb') as f_in, open(output_file, 'wb') as f_out:
+		while True:
+			block = f_in.read(block_size)
+			if not block:
+				break
+			f_out.write(block)
+
+def ensure_dir_exists(directory):
+	if not os.path.exists(directory):
+		try:
+			os.makedirs(directory)
+		except:
+			pass
+
+def extract_member_reworked(tar_data, member, output_dir, inram):
+	#try:
+		member_path = os.path.join(output_dir, member.name)
+		# Ensure the directory exists
+		if member.isdir():
+			ensure_dir_exists(member_path)
+		else:
+			parent_dir = os.path.dirname(member_path)
+			ensure_dir_exists(parent_dir)
+
+		# Extract the member
+		if inram:
+			#with tarfile.open(fileobj=tar_data, mode="r") as tar:
+				tar_data.extract(member, output_dir)
+		else:
+			#print(type(tar_data),tar_data)
+			#with tarfile.open(tar_data, "r") as tar:
+				tar_data.extract(member, output_dir)
+	#except Exception as exc:
+	#	print(f"Generated an exception: {exc}")
+	#	print(tar_data, member, output_dir)
+
+def extract_and_set_attributes_batch_reworked(member_batch, tar_data, output_dir, inram):
+	if inram:
+		tar_data=tarfile.open(fileobj=tar_data, mode="r")
+	else:
+		tar_data=tarfile.open(tar_data, "r")
+	for member in member_batch:
+		#try:
+			#print(member)
+			extract_member_reworked(tar_data, member, output_dir, inram)
+			if member.name.endswith('.attr'):
+				attr_path = os.path.join(output_dir, member.name)
+				original_file = attr_path[:-38]  # Rimuove sia .attr che .{hash}
+				with open(attr_path, 'r') as f:
+					attr_data = json.load(f)
+					set_attributes(original_file, attr_data)
+				os.remove(attr_path)
+		#except Exception as exc:
+		#	print("Eccezione:",exc)
+
+def extract_and_set_attributes_reworked(member, tar_data, output_dir, inram): #slow, at least on disk
+    extract_member_reworked(tar_data, member, output_dir, inram)
+
+    if member.name.endswith('.attr'):
+        attr_path = os.path.join(output_dir, member.name)
+        original_file = attr_path[:-38]  # Rimuove sia .attr che .{hash}
+        with open(attr_path, 'r') as f:
+            attr_data = json.load(f)
+            set_attributes(original_file, attr_data)
+        os.remove(attr_path)
+
+def set_attributes(file_path, attr_data):
+    global check_hash, endianness
+
+    for name, details in attr_data.items():
+        attr_value = details['value']
+        attr_type = details['type']
+        attr_size = details['size']
+        if check_hash:
+            try:
+                attr_hash = details['hash']
+            except:
+                check_hash = False
+
+        node = BNode(file_path)
+        ck = get_type_string(details['type'])
+        if ck == 'RAWT':
+            attr_value = base64.b64decode(attr_value)
+            if check_hash:
+                if get_bytes_md5(attr_value) == attr_hash:
+                    print(file_path, name, "checksum OK")
+                else:
+                    print(file_path, name, "checksum Failed")
+        elif ck == 'LONG':
+            attr_value = int(attr_value)
+            attr_value = attr_value.to_bytes(4, byteorder=endianness)
+            if check_hash:
+                if get_bytes_md5(attr_value) == attr_hash:
+                    print(file_path, name, "checksum OK")
+                else:
+                    print(file_path, name, "checksum Failed")
+        elif ck == 'LLNG':
+            attr_value = int(attr_value)
+            attr_value = attr_value.to_bytes(8, byteorder=endianness)
+            if check_hash:
+                if get_bytes_md5(attr_value) == attr_hash:
+                    print(file_path, name, "checksum OK")
+                else:
+                    print(file_path, name, "checksum Failed")
+        elif ck == 'TIME':
+            if check_hash:
+                if get_bytes_md5(int(attr_value).to_bytes(8, byteorder=endianness)) == attr_hash:
+                    print(file_path, name, "checksum OK")
+                else:
+                    print(file_path, name, "checksum Failed")
+            attr_value = int(attr_value).to_bytes(8, byteorder=endianness)
+        elif ck == 'CSTR' or ck == 'MIMS':
+            attr_value = str.encode(attr_value)
+            if check_hash:
+                if get_str_md5(attr_value) == attr_hash:
+                    print(file_path, name, "checksum OK")
+                else:
+                    print(file_path, name, "checksum Failed")
+        elif ck == 'BOOL':
+            attr_value = bytes(attr_value, 'utf-8')
+            if check_hash:
+                if get_bytes_md5(attr_value) == attr_hash:
+                    print(file_path, name, "checksum OK")
+                else:
+                    print(file_path, name, "checksum Failed")
+        elif ck == 'FLOT':
+            attr_value = base64.b64decode(attr_value)
+            if check_hash:
+                if get_bytes_md5(attr_value) == attr_hash:
+                    print(file_path, name, "checksum OK")
+                else:
+                    print(file_path, name, "checksum Failed")
+        elif ck == 'DBLE':
+            attr_value = base64.b64decode(attr_value)
+            if check_hash:
+                if get_bytes_md5(attr_value) == attr_hash:
+                    print(file_path, name, "checksum OK")
+                else:
+                    print(file_path, name, "checksum Failed")
+        else:
+            attr_value = base64.b64decode(attr_value)
+            if check_hash:
+                if get_bytes_md5(attr_value) == attr_hash:
+                    print(file_path, name, "checksum OK")
+                else:
+                    print(file_path, name, "checksum Failed")
+        node.WriteAttr(name, attr_type, 0, attr_value)
+
+
+def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False,num_workers=None):
+	global parallelization#,inram
+	if parallelization == 0:
+		print("decompressione tar parallelizzata")
+	elif parallelization == 1:
+		print("decompressione tar parallelizzata in lotti")
+	elif parallelization == 1:
+		print("decompressione tar seriale in unico thread")
+
 	tar_file = input_file + '.tar'
-	decompress_file(input_file, tar_file, block_size)
-	be_app.WindowAt(0).PostMessage(BMessage(607))
-	extract_tar_with_attributes(tar_file, output_dir)
-	os.remove(tar_file)
+
+	if inram:
+		tar_data = decompress_bz2(input_file)
+		be_app.WindowAt(0).PostMessage(BMessage(607))
+		tar_data = tarfile.open(fileobj=io.BytesIO(tar_data), mode="r")
+	else:
+		decompress__bz2_in_file(input_file, tar_file, block_size)
+		be_app.WindowAt(0).PostMessage(BMessage(607))
+		tar_data = tarfile.open(tar_file, mode='r')
+	#be_app.WindowAt(0).PostMessage(BMessage(607))
+	#if inram:
+	#	tar_data = tarfile.open(fileobj=io.BytesIO(tar_data), mode="r")
+	#else:
+	#	tar_data = tarfile.open(tar_file, mode='r')
+	if num_workers==None:
+		num_cpus = multiprocessing.cpu_count()
+	else:
+		num_cpus = num_workers
+	if parallelization == 0:
+		# Estrarre i membri del tarfile in parallelo
+		with concurrent.futures.ThreadPoolExecutor(num_cpus) as executor:
+			if inram:
+				futures = [executor.submit(extract_and_set_attributes_reworked, member, tar_data, output_dir,inram) for member in tar_data.getmembers()]
+			else:
+				# rework in progress ###################################
+				futures = [executor.submit(extract_and_set_attributes_reworked, member, tar_data, output_dir,inram) for member in tar_data.getmembers()]
+			for future in concurrent.futures.as_completed(futures):
+					#try:
+						future.result()
+					#except Exception as exc:
+					#	print(f"Generated an exception: {exc}")
+				############## end rework ###############################
+	######### old code#############
+#				futures = [executor.submit(extract_and_set_attributes, member, tar_file, output_dir,inram) for member in tar_data.getmembers()]
+#			for future in concurrent.futures.as_completed(futures):
+#				#try:
+#					future.result()
+#				#except Exception as exc:
+#				#	print(f"Generated an exception: {exc}")
+	#######################################################
+	elif parallelization==1:
+		members = tar_data.getmembers()
+		member_batch=[]
+		batch_size = len(members) // num_cpus
+		for i in range(0, len(members), batch_size):
+			batch = members[i:i + batch_size]
+			member_batch.append(batch)
+		# Estrarre i membri del tarfile in parallelo 2 funziona e riduce parallellismo inutile
+		with concurrent.futures.ThreadPoolExecutor(num_cpus) as executor:
+			if inram:
+				futures = [executor.submit(extract_and_set_attributes_batch_reworked, member, tar_file, output_dir,inram) for batch in member_batch]
+			else:
+				futures = [executor.submit(extract_and_set_attributes_batch_reworked, batch, tar_file, output_dir,inram) for batch in member_batch]
+			for future in concurrent.futures.as_completed(futures):
+				#try:
+					future.result()
+				#except Exception as exc:
+				#	print(f"Generated an exception: {exc}")
+#######################################################
+	#elif parallelization==2:
+	# estrarre in parallelo ma con multiprocess non si può perché non riesce a fare la serializzazione pickle
+	# siccome un file rimane aperto
+	#	if inram:
+	#		pass
+	#	else:
+	#		#with tarfile.open(tar_file, 'r') as tar:
+	#		with tarfile.open(tar_file, 'r') as tar_data:
+	#		
+	#			members = tar_data.getmembers()
+#
+#				if num_workers is None:
+#					num_workers = multiprocessing.cpu_count()
+#
+#				batch_size = len(members) // num_workers
+#
+#				with multiprocessing.Pool(num_workers) as pool:
+#					extract_partial = partial(extract_and_set_attributes, tar_data=tar_data, output_dir=output_dir,inram=inram)
+#					for i in range(0, len(members), batch_size):
+#						batch = members[i:i + batch_size]
+#						pool.map(extract_partial, batch)
+	elif parallelization==3:
+		#extract_tar_with_attributes(tar_file, output_dir)
+		with tarfile.open(tar_file, "r") as tar:
+			for member in tar.getmembers():
+				try:
+					member_path = os.path.join(output_dir, member.name)
+					if not os.path.abspath(member_path).startswith(os.path.abspath(output_dir)):
+						raise Exception("Tentativo di estrazione fuori dalla directory di destinazione: {}".format(member.name))
+					tar.extract(member, output_dir)
+					if member.name.endswith('.attr'):
+						attr_path = os.path.join(output_dir, member.name)
+						original_file = attr_path[:-38]  # Rimuove sia .attr che .{hash}
+						with open(attr_path, 'r') as f:
+							attr_data = json.load(f)
+							set_attributes(original_file, attr_data)
+						os.remove(attr_path)
+				except Exception as e:
+					txt=(f"Errore durante l'estrazione del file {member.name}: {e}")
+					almsg=BMessage(714)
+					almsg.AddString("error",txt)
+					be_app.WindowAt(0).PostMessage(almsg)
+					break
+
+
+	if not inram:
+		os.remove(tar_file)
 	be_app.WindowAt(0).PostMessage(BMessage(107))
 
 class App(BApplication):
@@ -1100,7 +1241,7 @@ def main():
     be_app.Run()
 	
 if __name__ == "__main__":
-	global save_hash,check_hash,endianness
+	global save_hash,check_hash,endianness,parallelization
 	perc=BPath()
 	find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
 	datapath=BDirectory(perc.Path()+"/HTPBZ2")
@@ -1127,6 +1268,9 @@ if __name__ == "__main__":
 					save_hash=True
 				else:
 					save_hash=False
+			elif key == "parallelization":
+				value = ConfigSectionMap("System")["parallelization"]
+				parallelization=int(value)
 	else:
 		cfgfile = open(confile.Path(),'w')
 		Config.add_section('System')
@@ -1137,6 +1281,8 @@ if __name__ == "__main__":
 		Config.set('System','savesum', "False")
 		Config.set('System','compression', "9")
 		Config.set('System','block_size', "1048576")
+		Config.set('System','parallelization', "0")
+		parallelization=0
 		save_hash=False
 		Config.write(cfgfile)
 		cfgfile.close()
