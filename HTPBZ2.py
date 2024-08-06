@@ -3,11 +3,11 @@ import os,sys,tarfile,bz2,io,base64,datetime,struct,math,hashlib,json,configpars
 import multiprocessing
 from functools import partial
 import concurrent.futures
-from Be import BApplication, BWindow, BView, BNode,BRadioButton,BButton,BMessage, window_type, B_NOT_RESIZABLE, B_CLOSE_ON_ESCAPE, B_QUIT_ON_WINDOW_CLOSE, BTextControl, BAlert,BListView, BScrollView,BStringItem,BTextView,BRect, BBox, BFont, InterfaceDefs, BPath, BDirectory, BEntry,BStringView,BSlider
+from Be import BApplication, BWindow, BView, BNode,BRadioButton,BButton,BMessage, window_type, B_NOT_RESIZABLE, B_CLOSE_ON_ESCAPE, B_QUIT_ON_WINDOW_CLOSE, BTextControl, BAlert,BListView, BScrollView,BStringItem,BTextView,BRect, BBox, BFont, InterfaceDefs, BPath, BDirectory, BEntry,BStringView,BSlider,BMenu,BMenuField,BMenuItem
 from Be import BFile,BCheckBox
 from Be.FindDirectory import *
 from Be.Alert import alert_type
-from Be.InterfaceDefs import border_style,orientation
+from Be.InterfaceDefs import border_style,orientation,B_CONTROL_KEY
 from Be.ListView import list_view_type
 from Be.AppDefs import *
 from Be.View import *
@@ -29,7 +29,7 @@ Config=configparser.ConfigParser()
 global ver,status,rev
 ver="1"
 status="alpha"
-rev="20240802"
+rev="20240806"
 author="Fabio Tomat"
 
 def ConfigSectionMap(section):
@@ -109,39 +109,32 @@ class AboutView(BView):
 		self.author=BStringView(r,"app_auth",txt)
 		self.author.SetFont(fon)
 		self.AddChild(self.author,None)
-				
-class SystemView(BView):
+
+class CompressView(BView):
 	def __init__(self,frame):
-		global endianness
-		BView.__init__(self,frame,"About",8,20000000)
+		global cmplvl,save_hash,block_size
+		BView.__init__(self,frame,"Compression",8,20000000)
 		bounds=self.Bounds()
-		self.endianbox=BBox(BRect(4,4,bounds.Width()-4,bounds.Height()/2-4),"endianess_box",0x0202|0x0404,border_style.B_FANCY_BORDER)
-		self.checksumbox=BBox(BRect(4,bounds.Height()/2+4,bounds.Width()-4,bounds.Height()-4),"checksum_box",0x0202|0x0404,border_style.B_FANCY_BORDER)
-		self.AddChild(self.endianbox,None)
+		self.checksumbox=BBox(BRect(4,4,bounds.Width()-4,bounds.Height()-4),"checksum_box",0x0202|0x0404,border_style.B_FANCY_BORDER)
 		self.AddChild(self.checksumbox,None)
-		txt="Machine endianness: "+endianness
-		font_height_value=font_height()
-		self.GetFontHeight(font_height_value)
-		r=BRect(4,4,self.StringWidth(txt)+8,font_height_value.ascent+8)
-		self.sys_endian=BStringView(r,"sys_endianness",txt)
-		self.endianbox.AddChild(self.sys_endian,None)
-		#TODO: CheckBox per estrarre bz2 in ram o su disco
 		chkb_bounds=self.checksumbox.Bounds()
+		font_height_value=font_height()
 		fon=BFont()
 		fon.SetSize(32)
 		fon_height_value=font_height()
 		self.GetFontHeight(fon_height_value)
-		r=BRect(chkb_bounds.right-8-fon.StringWidth("0"),15,chkb_bounds.right-4,18+fon.Size())
+		r=BRect(chkb_bounds.right-8-fon.StringWidth("0"),24+fon.Size()*2,chkb_bounds.right-4,28+fon.Size()*3)
 		self.cmplvl_value = BStringView(r,"cmplvl_value","9")
 		self.cmplvl_value.SetFont(fon)
 		self.checksumbox.AddChild(self.cmplvl_value,None)
 		txt="Save checksums in archives"
 		self.ckb_savesum=BCheckBox(BRect(4,4,38+self.StringWidth(txt),font_height_value.ascent+8),"save_chksum",txt,BMessage(1600))
-		txt="Check files on extraction"
-		self.ckb_checksum=BCheckBox(BRect(4,12+font_height_value.ascent,38+self.StringWidth(txt),16+font_height_value.ascent*2),"check_sum",txt,BMessage(1700))
 		self.checksumbox.AddChild(self.ckb_savesum,None)
-		self.checksumbox.AddChild(self.ckb_checksum,None)
-		r = BRect(4,20+font_height_value.ascent*2,bounds.right-12,24+font_height_value.ascent*3)
+		r=BRect(4,fon.Size()+12,bounds.right-12,fon.Size()*2+20)
+		self.BlkSz=BTextControl(r,"block_size_txt","Block size:",str(block_size),BMessage(1324))
+		self.checksumbox.AddChild(self.BlkSz,None)
+		
+		r = BRect(4,32+fon.Size()*3,bounds.right-12,36+fon.Size()*4)
 		self.compr_lvl=BSlider(r,"cmpr_lvl","Compression level:",BMessage(1224),1,9)
 		self.compr_lvl.SetHashMarks(hash_mark_location.B_HASH_MARKS_BOTH)
 		self.compr_lvl.SetBarThickness(10.0)
@@ -158,21 +151,98 @@ class SystemView(BView):
 			ent=BEntry(confile.Path())
 			if ent.Exists():
 				Config.read(confile.Path())
-				value=ConfigSectionMap("System")["savesum"]
+				value=ConfigSectionMap("Compression")["savesum"]
 				if value == "True":
 					self.ckb_savesum.SetValue(1)
 				else:
 					self.ckb_savesum.SetValue(0)
-				value=ConfigSectionMap("System")["checksum"]
-				if value == "True":
-					self.ckb_checksum.SetValue(1)
-				else:
-					self.ckb_checksum.SetValue(0)
-				strvalue=ConfigSectionMap("System")["compression"]
+				#value=ConfigSectionMap("System")["checksum"]
+				#if value == "True":
+				#	self.ckb_checksum.SetValue(1)
+				#else:
+				#	self.ckb_checksum.SetValue(0)
+				strvalue=ConfigSectionMap("Compression")["compression"]
 				value=int(strvalue)
 				self.compr_lvl.SetValue(value)
 				self.cmplvl_value.SetText(strvalue)
+				strvalue=ConfigSectionMap("Compression")["block_size"]
 
+class DecompressView(BView):
+	def __init__(self,frame):
+		global parallelization,check_hash
+		BView.__init__(self,frame,"Decompression",8,20000000)
+		bounds=self.Bounds()
+		self.checksumbox=BBox(BRect(4,4,bounds.Width()-4,bounds.Height()-4),"checksum_box",0x0202|0x0404,border_style.B_FANCY_BORDER)
+		self.AddChild(self.checksumbox,None)
+		#TODO: CheckBox per estrarre bz2 in ram o su disco
+		chkb_bounds=self.checksumbox.Bounds()
+		font_height_value=font_height()
+		fon=BFont()
+		#fon.SetSize(32)
+		fon_height_value=font_height()
+		self.GetFontHeight(fon_height_value)
+		txt="Check files on extraction"
+		self.ckb_checksum=BCheckBox(BRect(4,4,38+self.StringWidth(txt),8+fon.Size()),"check_sum",txt,BMessage(1700))
+		self.checksumbox.AddChild(self.ckb_checksum,None)
+		#txt="Threading: "
+		#uwu=self.StringWidth(txt)
+		#self.sv_threading=BStringView(BRect(4,20+fon.Size(),4+uwu,28+fon.Size()*2),"sv",txt)
+		#self.checksumbox.AddChild(self.sv_threading,None)
+		uwu=self.StringWidth("Tar parallelization:")+10
+		d={100:"Multi-threading",101:"Batched multithreading",103:"Single thread"}
+		self.menup=BMenu("Parallelization")
+		self.menup.SetLabelFromMarked(True)
+		for k in d.keys():
+			self.menup.AddItem(BMenuItem(d[k], BMessage(k),d[k][0],B_CONTROL_KEY))
+		self.pbar = BMenuField(BRect(20, 28+fon.Size()*2, chkb_bounds.Width()-8, 32+3*fon.Size()), 'pop1', 'Tar parallelization:', self.menup,B_FOLLOW_TOP)
+		self.pbar.SetDivider(uwu)
+		self.checksumbox.AddChild(self.pbar,None)
+		for k in d.keys():
+			if k-100==parallelization:
+				itm=self.menup.FindItem(d[k])
+				itm.SetMarked(True)
+
+class CpuStringView(BStringView):
+	def __init__(self,frame,name,value,max):
+		self.value=value
+		self.max=max
+		label=str(value)+"/"+str(max)
+		BStringView.__init__(self,frame,name,label)
+	def SetValue(self,value):
+		self.value=value
+		label=str(value)+"/"+str(max)
+		self.SetText(label)
+	def ThisIsMe(self):
+		return True
+		
+class SystemView(BView):
+	def __init__(self,frame):
+		global endianness,num_cpus
+		BView.__init__(self,frame,"About",8,20000000)
+		bounds=self.Bounds()
+		self.endianbox=BBox(BRect(4,4,bounds.Width()-4,bounds.Height()-4),"endianess_box",0x0202|0x0404,border_style.B_FANCY_BORDER)
+		self.AddChild(self.endianbox,None)
+		txt="Machine endianness: "+endianness
+		font_height_value=font_height()
+		self.GetFontHeight(font_height_value)
+		r=BRect(4,4,self.StringWidth(txt)+8,font_height_value.ascent+8)
+		self.sys_endian=BStringView(r,"sys_endianness",txt)
+		self.endianbox.AddChild(self.sys_endian,None)
+		txt="CPUs used for de/compression:"
+		r=BRect(4,12+font_height_value.ascent,self.StringWidth(txt)+8,20+font_height_value.ascent*2)
+		self.workers=BStringView(r,"cpu_workers",txt)
+		self.endianbox.AddChild(self.workers,None)
+		r=BRect(self.StringWidth(txt)+20,12+font_height_value.ascent,bounds.right-12,20+font_height_value.ascent*2)
+		self.cpus_value=CpuStringView(r,"cpus_value",num_cpus,multiprocessing.cpu_count())
+		self.endianbox.AddChild(self.cpus_value,None)
+		r = BRect(4,24+font_height_value.ascent*2,bounds.right-12,32+font_height_value.ascent*3)
+		self.numcpus=BSlider(r,"num_cpus","Number of cpus:",BMessage(4221),1,multiprocessing.cpu_count())
+		self.numcpus.SetHashMarks(hash_mark_location.B_HASH_MARKS_BOTH)
+		self.numcpus.SetBarThickness(10.0)
+		self.endianbox.AddChild(self.numcpus,None)
+		self.numcpus.SetLimitLabels("1",str(multiprocessing.cpu_count()))
+		self.numcpus.SetValue(num_cpus)
+				
 class SettingsWindow(BWindow):
 	def __init__(self):
 		BWindow.__init__(self, BRect(200,150,800,450), "Settings", window_type.B_FLOATING_WINDOW,  B_NOT_RESIZABLE|B_CLOSE_ON_ESCAPE)
@@ -206,7 +276,7 @@ class SettingsWindow(BWindow):
 				alert.Go()
 				self.Close()
 	def MessageReceived(self, msg):
-		global save_hash,check_hash
+		global save_hash,check_hash,num_cpus,block_size,opt_view
 		if msg.what == 54:
 			son=self.box.CountChildren()
 			if son>0:
@@ -218,14 +288,35 @@ class SettingsWindow(BWindow):
 				rec=self.box.Bounds()
 				myrec=BRect(rec.left+4,rec.top+4,rec.right-4,rec.bottom-4)
 				if option == "System":
-					self.box.AddChild(SystemView(myrec),None)
+					opt_view=SystemView(myrec)
+					self.box.AddChild(opt_view,None)
+				elif option == "Compression":
+					opt_view=CompressView(myrec)
+					self.box.AddChild(opt_view,None)
+				elif option == "Decompression":
+					opt_view=DecompressView(myrec)
+					self.box.AddChild(opt_view,None)
 				elif option == 'About':
-					self.box.AddChild(AboutView(myrec),None)
+					opt_view=AboutView(myrec)
+					self.box.AddChild(opt_view,None)
 		elif msg.what == 1600:
 			self.rmView=self.box.ChildAt(self.box.CountChildren()-1)
 			self.boxview=self.rmView.ChildAt(self.rmView.CountChildren()-1)
-			self.bx=self.boxview.ChildAt(self.boxview.CountChildren()-3)
-			if self.bx.Label()!="Save checksums in archives":
+			a=self.boxview.ChildAt(0)
+			endof=False
+			while True:
+				if type(a)==BCheckBox:
+					break
+				a=a.NextSibling()
+				if a == None:
+					endof=True
+					break
+			if endof:
+				saytxt="Handling wrong configuration, ignoring"
+				self.alert= BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
+				self.alert.Go()
+				return
+			if a.Label()!="Save checksums in archives":
 				saytxt="Handling wrong configuration, ignoring"
 				self.alert= BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
 				self.alert.Go()
@@ -242,11 +333,11 @@ class SettingsWindow(BWindow):
 				if ent.Exists():
 					Config.read(confile.Path())
 					cfgfile = open(confile.Path(),'w')
-					if self.bx.Value():
-						Config.set('System','savesum', "True")
+					if a.Value():
+						Config.set('Compression','savesum', "True")
 						save_hash=True
 					else:
-						Config.set('System','savesum', "False")
+						Config.set('Compression','savesum', "False")
 						save_hash=False
 					Config.write(cfgfile)
 					cfgfile.close()
@@ -281,6 +372,93 @@ class SettingsWindow(BWindow):
 					Config.write(cfgfile)
 					cfgfile.close()
 					Config.read(confile.Path())
+		elif msg.what == 1324:
+			self.rmView=self.box.ChildAt(self.box.CountChildren()-1)
+			self.boxview=self.rmView.ChildAt(self.rmView.CountChildren()-1)
+			a=self.boxview.ChildAt(0)
+			endof=False
+			while True:
+				if type(a)==BTextControl:
+					break
+				a=a.NextSibling()
+				if a == None:
+					endof=True
+					break
+			if endof:
+				saytxt="Handling wrong configuration, ignoring"
+				self.alert= BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
+				self.alert.Go()
+				return
+			try:
+				v=int(a.Text())
+			except:
+				saytxt="Value not suitable for block size"
+				self.alert= BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_STOP_ALERT)
+				self.alert.Go()
+				return
+			perc=BPath()
+			find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
+			ent=BEntry(perc.Path()+"/HTPBZ2")
+			if not ent.Exists():
+				self.Close()
+			else:
+				ent.GetPath(perc)
+				confile=BPath(perc.Path()+'/config.ini',None,False)
+				ent=BEntry(confile.Path())
+				if ent.Exists():
+					Config.read(confile.Path())
+					cfgfile = open(confile.Path(),'w')
+					Config.set('Compression','block_size', str(v))
+					Config.write(cfgfile)
+					cfgfile.close()
+					Config.read(confile.Path())
+					block_size=v
+		elif msg.what == 4221:
+			self.rmView=self.box.ChildAt(self.box.CountChildren()-1)
+			self.boxview=self.rmView.ChildAt(self.rmView.CountChildren()-1)
+			self.slid=self.boxview.ChildAt(self.boxview.CountChildren()-1)
+			if type(self.slid)!=BSlider:
+				saytxt="Handling wrong configuration, ignoring"
+				self.alert= BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
+				self.alert.Go()
+				return
+			a=self.boxview.ChildAt(0)
+			num_cpus=self.slid.Value()
+			endof=False
+			while True:
+				#if "/" in a.Text():
+				if a.ThisIsMe():
+					break
+				a=a.NextSibling()
+				if a == None:
+					endof=True
+					break
+			self.cpus_value=a
+			if endof:
+				saytxt="Handling wrong configuration, ignoring"
+				self.alert= BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
+				self.alert.Go()
+				return
+			perc=BPath()
+			find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
+			ent=BEntry(perc.Path()+"/HTPBZ2")
+			if not ent.Exists():
+				self.Close()
+			else:
+				v=str(self.slid.Value())
+				ent.GetPath(perc)
+				confile=BPath(perc.Path()+'/config.ini',None,False)
+				ent=BEntry(confile.Path())
+				if ent.Exists():
+					Config.read(confile.Path())
+					cfgfile = open(confile.Path(),'w')
+					Config.set('System','cpus', v)
+					Config.write(cfgfile)
+					cfgfile.close()
+					Config.read(confile.Path())
+					#txt=v+"/"+str(multiprocessing.cpu_count())
+					#self.cpus_value.SetText(txt)
+					self.cpus_value.SetValue(v)
 		elif msg.what == 1224:
 			self.rmView=self.box.ChildAt(self.box.CountChildren()-1)
 			self.boxview=self.rmView.ChildAt(self.rmView.CountChildren()-1)
