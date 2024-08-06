@@ -210,7 +210,7 @@ class CpuStringView(BStringView):
 		BStringView.__init__(self,frame,name,label)
 	def SetValue(self,value):
 		self.value=value
-		label=str(value)+"/"+str(max)
+		label=str(value)+"/"+str(self.max)
 		self.SetText(label)
 	def ThisIsMe(self):
 		return True
@@ -275,6 +275,26 @@ class SettingsWindow(BWindow):
 				alert= BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
 				alert.Go()
 				self.Close()
+	def set_threadization(self,mw):
+			global parallelization
+			perc=BPath()
+			find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
+			ent=BEntry(perc.Path()+"/HTPBZ2")
+			if not ent.Exists():
+				self.Close()
+			else:
+				ent.GetPath(perc)
+				confile=BPath(perc.Path()+'/config.ini',None,False)
+				ent=BEntry(confile.Path())
+				if ent.Exists():
+					Config.read(confile.Path())
+					cfgfile = open(confile.Path(),'w')
+					parallelization=mw-100
+					Config.set('Decompression','parallelization', str(parallelization))
+					Config.write(cfgfile)
+					cfgfile.close()
+					Config.read(confile.Path())
+					
 	def MessageReceived(self, msg):
 		global save_hash,check_hash,num_cpus,block_size,opt_view
 		if msg.what == 54:
@@ -299,6 +319,8 @@ class SettingsWindow(BWindow):
 				elif option == 'About':
 					opt_view=AboutView(myrec)
 					self.box.AddChild(opt_view,None)
+		elif msg.what in [100,101,103]:
+			self.set_threadization(msg.what)
 		elif msg.what == 1600:
 			self.rmView=self.box.ChildAt(self.box.CountChildren()-1)
 			self.boxview=self.rmView.ChildAt(self.rmView.CountChildren()-1)
@@ -427,8 +449,11 @@ class SettingsWindow(BWindow):
 			endof=False
 			while True:
 				#if "/" in a.Text():
-				if a.ThisIsMe():
-					break
+				try:
+					if a.ThisIsMe():
+						break
+				except:
+					pass
 				a=a.NextSibling()
 				if a == None:
 					endof=True
@@ -445,14 +470,14 @@ class SettingsWindow(BWindow):
 			if not ent.Exists():
 				self.Close()
 			else:
-				v=str(self.slid.Value())
+				v=self.slid.Value()
 				ent.GetPath(perc)
 				confile=BPath(perc.Path()+'/config.ini',None,False)
 				ent=BEntry(confile.Path())
 				if ent.Exists():
 					Config.read(confile.Path())
 					cfgfile = open(confile.Path(),'w')
-					Config.set('System','cpus', v)
+					Config.set('System','cpus', str(v))
 					Config.write(cfgfile)
 					cfgfile.close()
 					Config.read(confile.Path())
@@ -488,7 +513,7 @@ class SettingsWindow(BWindow):
 				if ent.Exists():
 					Config.read(confile.Path())
 					cfgfile = open(confile.Path(),'w')
-					Config.set('System','compression', v)
+					Config.set('Compression','compression', v)
 					Config.write(cfgfile)
 					cfgfile.close()
 					Config.read(confile.Path())
