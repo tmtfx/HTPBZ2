@@ -678,6 +678,7 @@ class HTPBZ2Window(BWindow):
 			pass
 
 	def MessageReceived(self, msg):
+		global block_size,cmplvl
 		if msg.what == 207:
 			self.opf=""
 			self.ofp.Show()
@@ -926,6 +927,7 @@ def compress_block(block, compresslevel):
     return bz2.compress(block, compresslevel=compresslevel)
 
 def parallel_compress_file(input_file, output_file, block_size=1024*1024, compresslevel=9):
+	global num_cpus
 	file_size = os.path.getsize(input_file)
 	# Se il file è più piccolo del block_size, comprimi senza parallellismo
 	if file_size < block_size:
@@ -935,7 +937,7 @@ def parallel_compress_file(input_file, output_file, block_size=1024*1024, compre
 		with open(output_file, 'wb') as f:
 			f.write(compressed_data)
 	else:
-		num_cpus = multiprocessing.cpu_count()
+		#num_cpus = multiprocessing.cpu_count()
 		with open(input_file, 'rb') as f:
 			blocks = []
 			while True:
