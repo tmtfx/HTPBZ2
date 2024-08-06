@@ -3,7 +3,7 @@ import os,sys,tarfile,bz2,io,base64,datetime,struct,math,hashlib,json,configpars
 import multiprocessing
 from functools import partial
 import concurrent.futures
-from Be import BApplication, BWindow, BView, BNode,BRadioButton,BButton,BMessage, window_type, B_NOT_RESIZABLE, B_CLOSE_ON_ESCAPE, B_QUIT_ON_WINDOW_CLOSE, BTextControl, BAlert,BListView, BScrollView,BListItem,BStringItem,BTextView,BRect, BBox, BFont, InterfaceDefs, BPath, BDirectory, BEntry,BStringView,BSlider
+from Be import BApplication, BWindow, BView, BNode,BRadioButton,BButton,BMessage, window_type, B_NOT_RESIZABLE, B_CLOSE_ON_ESCAPE, B_QUIT_ON_WINDOW_CLOSE, BTextControl, BAlert,BListView, BScrollView,BStringItem,BTextView,BRect, BBox, BFont, InterfaceDefs, BPath, BDirectory, BEntry,BStringView,BSlider
 from Be import BFile,BCheckBox
 from Be.FindDirectory import *
 from Be.Alert import alert_type
@@ -322,7 +322,7 @@ class HTPBZ2Window(BWindow):
 	opf=""
 	tmpWind=[]
 	def __init__(self,cmds,args):
-		global timings
+		global timings#,block_size,cmplvl
 		BWindow.__init__(self, BRect(200,170,800,278), "Tar Parallel-BZip2 Compressor/Decompressor with attributes", window_type.B_TITLED_WINDOW, B_NOT_RESIZABLE |B_QUIT_ON_WINDOW_CLOSE)
 		self.bckgnd = BView(self.Bounds(), "bckgnd_View", 8, 20000000)
 		rect=self.bckgnd.Bounds()
@@ -547,23 +547,23 @@ class HTPBZ2Window(BWindow):
 				self.stime=time.time()
 			self.list_autol=self.input.Text().split(",")
 			if self.rb1.Value():
-				perc=BPath()
-				find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
-				ent=BEntry(perc.Path()+"/HTPBZ2")
-				if not ent.Exists():
-					cmplvl=9
-					block_size=1024*1024
-				else:
-					ent.GetPath(perc)
-					confile=BPath(perc.Path()+'/config.ini',None,False)
-					ent=BEntry(confile.Path())
-					if ent.Exists():
-						Config.read(confile.Path())
-						cmplvl=int(ConfigSectionMap("System")["compression"])
-						block_size=int(ConfigSectionMap("System")["block_size"])
-					else:
-						cmplvl=9
-						block_size=1024*1024
+				# perc=BPath()
+				# find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
+				# ent=BEntry(perc.Path()+"/HTPBZ2")
+				# if not ent.Exists():
+					# cmplvl=9
+					# block_size=1024*1024
+				# else:
+					# ent.GetPath(perc)
+					# confile=BPath(perc.Path()+'/config.ini',None,False)
+					# ent=BEntry(confile.Path())
+					# if ent.Exists():
+						# Config.read(confile.Path())
+						# cmplvl=int(ConfigSectionMap("System")["compression"])
+						# block_size=int(ConfigSectionMap("System")["block_size"])
+					# else:
+						# cmplvl=9
+						# block_size=1024*1024
 				self.GoBtn.SetEnabled(False)
 				self.box.Hide()
 				self.compelbox.Show()
@@ -1241,7 +1241,7 @@ def main():
     be_app.Run()
 	
 if __name__ == "__main__":
-	global save_hash,check_hash,endianness,parallelization
+	global save_hash,check_hash,endianness,parallelization,cmplvl,block_size,num_cpus
 	perc=BPath()
 	find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
 	datapath=BDirectory(perc.Path()+"/HTPBZ2")
@@ -1253,37 +1253,88 @@ if __name__ == "__main__":
 	ent=BEntry(confile.Path())
 	if ent.Exists():
 		Config.read(confile.Path())
-		for key in Config["System"]:
-			if key == "endianness":
-				endianness = ConfigSectionMap("System")["endianness"]
-			elif key == "checksum":
-				value = ConfigSectionMap("System")["checksum"]
-				if value == "True":
-					check_hash=True
-				else:
-					check_hash=False
-			elif key == "savesum":
-				value = ConfigSectionMap("System")["savesum"]
-				if value == "True":
-					save_hash=True
-				else:
-					save_hash=False
-			elif key == "parallelization":
-				value = ConfigSectionMap("System")["parallelization"]
-				parallelization=int(value)
+		try:
+			for key in Config["System"]:
+				if key == "endianness":
+					endianness = ConfigSectionMap("System")["endianness"]
+				elif key == "cpus":
+					num_cpus = int(ConfigSectionMap("System")["cpus"])
+		except Exception as e:
+			print(e)
+			cfgfile = open(confile.Path(),'w')
+			Config.add_section('System')
+			get_endianness()
+			num_cpus=multiprocessing.cpu_count()
+			Config.set('System','endianness', endianness)
+			Config.set('System','cpus', str(num_cpus))
+			Config.write(cfgfile)
+			cfgfile.close()
+		Config.read(confile.Path())
+		try:
+			for key in Config["Compression"]:
+				if key == "savesum":
+					value = ConfigSectionMap("Compression")["savesum"]
+					if value == "True":
+						save_hash=True
+					else:
+						save_hash=False
+				elif key == "compression":
+					cmplvl = int(ConfigSectionMap("Compression")["compression"])
+				elif key == "block_size":
+					block_size = int(ConfigSectionMap("Compression")["block_size"])
+		except Exception as e:
+			print(e)
+			cfgfile = open(confile.Path(),'w')
+			Config.add_section('Compression')
+			Config.set('Compression','savesum', "False")
+			Config.set('Compression','compression', "9")
+			Config.set('Compression','block_size', "1048576")
+			save_hash=False
+			cmplvl=9
+			block_size=1048576
+			Config.write(cfgfile)
+			cfgfile.close()
+		Config.read(confile.Path())
+		try:
+			for key in Config["Decompression"]:
+				if key == "checksum":
+					value = ConfigSectionMap("Decompression")["checksum"]
+					if value == "True":
+						check_hash=True
+					else:
+						check_hash=False
+				elif key == "parallelization":
+					parallelization = int(ConfigSectionMap("Decompression")["parallelization"])
+		except Exception as e:
+			print(e)
+			cfgfile = open(confile.Path(),'w')
+			Config.add_section('Decompression')
+			Config.set('Decompression','checksum', "False")
+			Config.set('Decompression','parallelization', "0")
+			check_hash=False
+			parallelization=0
+			Config.write(cfgfile)
+			cfgfile.close()
+		Config.read(confile.Path())
 	else:
 		cfgfile = open(confile.Path(),'w')
 		Config.add_section('System')
 		get_endianness()
+		num_cpus=multiprocessing.cpu_count()
 		Config.set('System','endianness', endianness)
-		Config.set('System','checksum', "False")
+		Config.set('System','cpus', str(num_cpus))
+		Config.add_section('Compression')
+		Config.set('Compression','savesum', "False")
+		Config.set('Compression','compression', "9")
+		Config.set('Compression','block_size', "1048576")
+		Config.add_section('Decompression')
+		Config.set('Decompression','checksum', "False")
+		Config.set('Decompression','parallelization', "0")
 		check_hash=False
-		Config.set('System','savesum', "False")
-		Config.set('System','compression', "9")
-		Config.set('System','block_size', "1048576")
-		Config.set('System','parallelization', "0")
 		parallelization=0
 		save_hash=False
+		cmplvl=9
+		block_size=1048576
 		Config.write(cfgfile)
 		cfgfile.close()
 		Config.read(confile.Path())
