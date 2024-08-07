@@ -28,7 +28,7 @@ Config=configparser.ConfigParser()
 global ver,status,rev
 ver="1"
 status="alpha"
-rev="20240806"
+rev="20240807"
 author="Fabio Tomat"
 
 def ConfigSectionMap(section):
@@ -65,21 +65,21 @@ class AboutView(BView):
 		font_height_value=font_height()
 		fon.GetHeight(font_height_value)
 		fon.SetShear(115.0)
-		txt="Haiku Tar-ParallelBZip2"
+		txt="TMZ a Tar-ParallelBZip2 format"
 		txtw=fon.StringWidth(txt)
 		r=BRect(bounds.Width()/2-txtw/2-4,4,bounds.Width()/2+txtw/2+4,font_height_value.ascent+4)
 		self.name=BStringView(r,"app_name",txt)
 		self.name.SetFont(fon)
 		self.name.SetHighColor(255,0,0,0)
 		self.AddChild(self.name,None)
-		txt="This simple utility compresses and decompresses files and folders in tar.bz2 format, and also adds Haiku-specific attributes to the archive.\nThe BZip2 compression is parallelized."
+		txt="This simple utility compresses and decompresses files and folders in tar.bz2 format, and also adds Haiku-specific attributes to the archive.\nCompression is parallelized and extraction (at your will) can be parallelized and elaborated in ram."
 		abrect=BRect(4,font_height_value.ascent+8, bounds.Width()-4,bounds.Height()/2-4)
 		inner_ab=BRect(4,4,abrect.Width()-4,abrect.Height()-4)
 		self.AboutText = BTextView(abrect, 'aBOUTTxTView', inner_ab , B_FOLLOW_NONE)
 		self.AboutText.MakeEditable(False)
 		self.AboutText.MakeSelectable(False)
 		fon1=BFont(be_plain_font)
-		fon1.SetSize(14.0)
+		fon1.SetSize(13.0)
 		col1=rgb_color()
 		col1.red=10
 		col1.green=200
@@ -128,6 +128,7 @@ class CompressView(BView):
 		self.checksumbox.AddChild(self.cmplvl_value,None)
 		txt="Save checksums in archives"
 		self.ckb_savesum=BCheckBox(BRect(4,4,38+self.StringWidth(txt),font_height_value.ascent+8),"save_chksum",txt,BMessage(1600))
+		self.ckb_savesum.SetEnabled(0)
 		self.checksumbox.AddChild(self.ckb_savesum,None)
 		r=BRect(4,fon.Size()+12,bounds.right-12,fon.Size()*2+20)
 		self.BlkSz=BTextControl(r,"block_size_txt","Block size:",str(block_size),BMessage(1324))
@@ -175,6 +176,7 @@ class DecompressView(BView):
 		self.GetFontHeight(fon_height_value)
 		txt="Check files on extraction"
 		self.ckb_checksum=BCheckBox(BRect(4,4,38+self.StringWidth(txt),8+fon.Size()),"check_sum",txt,BMessage(1700))
+		self.ckb_checksum.SetEnabled(0)
 		self.checksumbox.AddChild(self.ckb_checksum,None)
 		uwu=self.StringWidth("Tar parallelization:")+10
 		d={100:"Multi-threading",101:"Batched multithreading",103:"Single thread"}
@@ -572,7 +574,7 @@ class HTPBZ2Window(BWindow):
 	opf=""
 	def __init__(self,cmds,args):
 		global timings#,block_size,cmplvl
-		BWindow.__init__(self, BRect(200,170,800,278), "Tar Parallel-BZip2 Compressor/Decompressor with attributes", window_type.B_TITLED_WINDOW, B_NOT_RESIZABLE |B_QUIT_ON_WINDOW_CLOSE)
+		BWindow.__init__(self, BRect(200,170,800,278), "TMZ Compressor/Decompressor", window_type.B_TITLED_WINDOW, B_NOT_RESIZABLE |B_QUIT_ON_WINDOW_CLOSE)
 		self.bckgnd = BView(self.Bounds(), "bckgnd_View", 8, 20000000)
 		rect=self.bckgnd.Bounds()
 		self.AddChild(self.bckgnd,None)
@@ -642,7 +644,7 @@ class HTPBZ2Window(BWindow):
 		self.autorun=False
 		self.setcmd=False
 		osdir="/boot/home/Desktop"
-		osfile="/boot/home/Desktop/output.tar.bz2"
+		osfile="/boot/home/Desktop/output.tmz"
 		if args!=[]:
 			for f in args:
 				f=os.path.abspath(f)
@@ -663,16 +665,16 @@ class HTPBZ2Window(BWindow):
 					osdir=os.path.dirname(os.path.abspath(a))
 					if len(self.list_autol)>1:
 						#osfile=os.path.basename(os.path.abspath(osdir))+".tar.bz2"
-						osfile=osdir+"/"+os.path.basename(os.path.abspath(osdir))+".tar.bz2"
+						osfile=osdir+"/"+os.path.basename(os.path.abspath(osdir))+".tmz"
 					else:
 						#osfile=os.path.basename(os.path.abspath(a))+".tar.bz2"
-						osfile=os.path.abspath(a)+".tar.bz2"
+						osfile=os.path.abspath(a)+".tmz"
 				else:
 					osdir=os.getcwd()
 					if len(self.list_autol)>1:
-						osfile=os.path.basename(os.path.abspath(osdir))+".tar.bz2"
+						osfile=os.path.basename(os.path.abspath(osdir))+".tmz"
 					else:
-						osfile=os.path.basename(os.path.abspath(a))+".tar.bz2"
+						osfile=os.path.basename(os.path.abspath(a))+".tmz"
 				if os.access(os.path.dirname(osfile), os.W_OK):
 					self.output.SetText(osfile)
 				else:
@@ -806,14 +808,14 @@ class HTPBZ2Window(BWindow):
 					##fout=os.path.dirname(self.list_autol[0])
 					##fout=os.getcwd()+"/"+os.path.basename(self.list_autol[0])+".tar.bz2"
 					#fout=os.path.abspath(self.list_autol[0])+".tar.bz2"
-					supposedpath=os.path.abspath(self.list_autol[0])+".tar.bz2"
+					supposedpath=os.path.abspath(self.list_autol[0])+".tmz"
 					if os.access(os.path.dirname(supposedpath), os.W_OK):
 						fout=supposedpath
 					else:
-						fout="/boot/home/Desktop/"+os.path.basename(self.list_autol[0])+".tar.bz2"
+						fout="/boot/home/Desktop/"+os.path.basename(self.list_autol[0])+".tmz"
 				else:
 					if not os.access(os.path.dirname(fout), os.W_OK):
-						supposedpath="/boot/home/Desktop/"+os.path.basename(fout)+".tar.bz2"
+						supposedpath="/boot/home/Desktop/"+os.path.basename(fout)+".tmz"
 						self.output.SetText(supposedpath)
 						fout=supposedpath
 				thr=Thread(target=create_compressed_archive,args=(self.list_autol,fout,block_size,cmplvl,self.autorun,))
@@ -867,11 +869,11 @@ class HTPBZ2Window(BWindow):
 			self.setcmd=False
 		elif msg.what == 191:
 			osdir="/boot/home/Desktop"
-			osfile="/boot/home/Desktop/output.tar.bz2"
+			osfile="/boot/home/Desktop/output.tmz"
 			self.fp=BFilePanel(B_SAVE_PANEL,None,None,0,False, None, None, True, True)
 			self.fp.SetPanelDirectory(osdir)
 			self.ofp.SetPanelDirectory(osdir)
-			self.fp.SetSaveText("output.tar.bz2")
+			self.fp.SetSaveText("output.tmz")
 			self.input.TextView().SelectAll()
 			self.input.TextView().Clear()
 			self.output.TextView().SelectAll()
@@ -1432,7 +1434,7 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 
 class App(BApplication):
 	def __init__(self):
-		BApplication.__init__(self, "application/x-python-HTPBZ2")
+		BApplication.__init__(self, "application/x-python-HTMZ")
 		self.realargs=[]
 		self.cmd=[]
 		self.SetPulseRate(1000000)
@@ -1441,13 +1443,11 @@ class App(BApplication):
 		self.window.Show()
 	def ArgvReceived(self,num,args):# argvReceived is executed before readytorun
 		global timings
-		#print("args:",args)
 		timings=False
 		realargs=args
 		if args[1][-9:]=="HTPBZ2.py":
 			realargs.pop(1)
 			realargs.pop(0)
-			#print("Realargs",realargs)
 			if len(realargs)>1:
 				remit=[]
 				for ra in realargs:
