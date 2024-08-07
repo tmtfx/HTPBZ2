@@ -912,8 +912,8 @@ class HTPBZ2Window(BWindow):
 		return BWindow.QuitRequested(self)
 
 def launch_extractions(paths,outputxt,autoclose,inram=False):
-	global alerts
-	try:
+#	global alerts
+#	try:
 		for path in paths:
 			be_app.WindowAt(0).PostMessage(BMessage(707))
 			suf="".join(Path(path).suffixes)
@@ -922,12 +922,12 @@ def launch_extractions(paths,outputxt,autoclose,inram=False):
 			decompress_archive(path, complout,inram=inram)
 		if autoclose:
 			be_app.WindowAt(0).PostMessage(B_QUIT_REQUESTED)
-	except Exception as e:
-		txt="Error: "+str(e)
-		alert= BAlert('Ops', txt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_STOP_ALERT)
-		alerts.append(alert)
-		alert.Go()
-		be_app.WindowAt(0).PostMessage(BMessage(107))
+#	except Exception as e:
+#		txt="Error: "+str(e)
+#		alert= BAlert('Ops', txt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_STOP_ALERT)
+#		alerts.append(alert)
+#		alert.Go()
+#		be_app.WindowAt(0).PostMessage(BMessage(107))
 
 def get_str_md5(txt):
 	return hashlib.md5(txt.encode('utf-8')).hexdigest()
@@ -1324,19 +1324,19 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 	global parallelization
 	if parallelization == 0:
 		if inram:
-			print("decompressione su disco parallelizzata")
-		else:
 			print("decompressione in ram parallelizzata")
+		else:
+			print("decompressione su disco parallelizzata")
 	elif parallelization == 1:
 		if inram:
-			print("decompressione su disco parallelizzata in lotti")
-		else:
 			print("decompressione in ram parallelizzata in lotti")
+		else:
+			print("decompressione su disco parallelizzata in lotti")
 	elif parallelization == 1:
 		if inram:
-			print("decompressione su disco seriale in unico thread")
-		else:
 			print("decompressione in ram seriale in unico thread")
+		else:
+			print("decompressione su disco seriale in unico thread")
 
 	tar_file = input_file + '.tar'
 
@@ -1367,7 +1367,8 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 	elif parallelization==1:
 		members = tar_data.getmembers()
 		member_batch=[]
-		batch_size = len(members) // num_cpus
+		#batch_size = len(members) // num_cpus
+		batch_size = max(1,len(members) // num_cpus)
 		for i in range(0, len(members), batch_size):
 			batch = members[i:i + batch_size]
 			member_batch.append(batch)
@@ -1443,6 +1444,8 @@ class App(BApplication):
 		self.window.Show()
 	def ArgvReceived(self,num,args):# argvReceived is executed before readytorun
 		global timings
+		with open("tmp.txt","w") as f:
+			f.write(str(args))
 		timings=False
 		realargs=args
 		if args[1][-7:]=="HTMZ.py":
