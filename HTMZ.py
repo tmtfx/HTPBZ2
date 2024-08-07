@@ -23,6 +23,7 @@ from Be.Slider import hash_mark_location
 from Be.TypeConstants import *
 from pathlib import Path
 from threading import Thread
+from pathlib import Path
 
 Config=configparser.ConfigParser()
 global ver,status,rev
@@ -1123,15 +1124,20 @@ def find_common_root(paths):
 
 def create_tar_with_attributes(input_paths, tar_file):
 	with tarfile.open(tar_file, "w") as tar:
-		cutter=find_common_root(input_paths)
+		if len(input_paths)>1:
+			cutter=find_common_root(input_paths)
+		else:
+			cutter=Path(input_paths[0]).parent
 		for input_path in input_paths:
 			if cutter==None:
 				cutter=os.path.dirname(input_path)+"/"
 			relative_path = os.path.relpath(input_path, cutter)
 			tar.add(input_path, arcname=relative_path)
 			if os.path.isfile(input_path):
+				print("è file")
 				add_attributes_to_tar(tar, input_path,cutter)
 			elif os.path.isdir(input_path):
+				print("è dir")
 				add_attributes_to_tar(tar,input_path,cutter)
 				for root, _, files in os.walk(input_path):
 					for dir in _:
