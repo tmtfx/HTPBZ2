@@ -1445,7 +1445,7 @@ class App(BApplication):
 		global timings
 		timings=False
 		realargs=args
-		if args[1][-9:]=="HTMZ.py":
+		if args[1][-7:]=="HTMZ.py":
 			realargs.pop(1)
 			realargs.pop(0)
 			if len(realargs)>1:
