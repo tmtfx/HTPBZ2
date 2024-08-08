@@ -29,7 +29,7 @@ Config=configparser.ConfigParser()
 global ver,status,rev
 ver="1"
 status="alpha"
-rev="20240807"
+rev="20240808"
 author="Fabio Tomat"
 
 def ConfigSectionMap(section):
@@ -1132,7 +1132,6 @@ def create_tar_with_attributes(input_paths, tar_file):
 			if cutter==None:
 				cutter=os.path.dirname(input_path)+"/"
 			relative_path = "./"+os.path.relpath(input_path, cutter)
-			print("relat_path",relative_path)
 			tar.add(input_path, arcname=relative_path)
 			if os.path.isfile(input_path):
 				add_attributes_to_tar(tar, input_path,cutter)
@@ -1237,27 +1236,27 @@ def extract_and_set_attributes_reworked(member, tar_data, output_dir, inram): #s
 	#r=bf.InitCheck()
 	#print("InitCheck",r)
 	#print("Is Readable:",bf.IsReadable())
-	if member.name.endswith('.attr'):
-		attr_path = os.path.join(output_dir, member.name[2:])
-		original_file = attr_path[:-38]  # Rimuove sia .attr che .{hash}
-		ent=BEntry(original_file)
-		while not(ent.Exists()):
-			#original file still not created! wait
-			pass
-		#bf=BFile(attr_path,0)
-		#r=bf.InitCheck()
-		#print("InitCheck",r)
-		#print("Is Readable:",bf.IsReadable())
-		#r,s=bf.GetSize()
-		#if r==0:
-		#	fileobj=io.BytesIO(bf.Read(s)[0])
-		#	print(fileobj)
-		#	attr_data = json.load(fileobj)
-		#	set_attributes(original_file, attr_data)
-		with open(attr_path, 'r') as f:
-			attr_data = json.load(f)
-			set_attributes(original_file, attr_data)
-		os.remove(attr_path)
+#	if member.name.endswith('.attr'):
+#		attr_path = os.path.join(output_dir, member.name[2:])
+#		original_file = attr_path[:-38]  # Rimuove sia .attr che .{hash}
+#		ent=BEntry(original_file)
+#		while not(ent.Exists()):
+#			#original file still not created! wait
+#			pass
+#		#bf=BFile(attr_path,0)
+#		#r=bf.InitCheck()
+#		#print("InitCheck",r)
+#		#print("Is Readable:",bf.IsReadable())
+#		#r,s=bf.GetSize()
+#		#if r==0:
+#		#	fileobj=io.BytesIO(bf.Read(s)[0])
+#		#	print(fileobj)
+#		#	attr_data = json.load(fileobj)
+#		#	set_attributes(original_file, attr_data)
+#		with open(attr_path, 'r') as f:
+#			attr_data = json.load(f)
+#			set_attributes(original_file, attr_data)
+#		os.remove(attr_path)
 
 def set_attributes(file_path, attr_data):
     global check_hash, endianness
@@ -1375,17 +1374,36 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 	else:
 		num_cpus = num_workers
 	if parallelization == 0:
-		# Estrarre i membri del tarfile in parallelo
+		tar_data.extractall(path=output_dir)
+#		# Attempt to extract tarfile members in a parallel mode
+#		with concurrent.futures.ThreadPoolExecutor(num_cpus) as executor:
+#			futures = [executor.submit(extract_and_set_attributes_reworked, member, tar_data, output_dir,inram) for member in tar_data.getmembers()]
+#			for future in concurrent.futures.as_completed(futures):
+#					#try:
+#						future.result()
+#					#except Exception as exc:
+#					#	print(f"Generated an exception: {exc}")
+		#TODO: mandare messaggio (adattare 607) per scrittura attributi  nel pannello di copertura
 		with concurrent.futures.ThreadPoolExecutor(num_cpus) as executor:
-			if inram:
-				futures = [executor.submit(extract_and_set_attributes_reworked, member, tar_data, output_dir,inram) for member in tar_data.getmembers()]
-			else:
-				futures = [executor.submit(extract_and_set_attributes_reworked, member, tar_data, output_dir,inram) for member in tar_data.getmembers()]
+			futures = []
+			for root, _, files in os.walk(output_dir):
+				for file in files:
+					if file[-5:]==".attr":
+						attr_path = os.path.join(root, file)
+						#original_file = attr_path[:-38]
+						#with open(attr_path, 'r') as f:
+						#	attr_data = json.load(f)
+						#	set_attributes(original_file, attr_data)
+						#os.remove(attr_path)
+					#file_path = os.path.join(root, file)
+						futures.append(executor.submit(process_file, attr_path))
+        
 			for future in concurrent.futures.as_completed(futures):
-					#try:
-						future.result()
-					#except Exception as exc:
-					#	print(f"Generated an exception: {exc}")
+				try:
+					future.result()  # Verifica eventuali eccezioni
+				except Exception as e:
+					print(f"Errore nell'elaborazione: {e}")
+
 	elif parallelization==1:
 		members = tar_data.getmembers()
 		member_batch=[]
@@ -1454,6 +1472,15 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 	if not inram:
 		os.remove(tar_file)
 	be_app.WindowAt(0).PostMessage(BMessage(107))
+
+def process_file(attr_path):
+	original_file = attr_path[:-38]
+	ent=BEntry(original_file)
+	if ent.Exists():
+		with open(attr_path, 'r') as f:
+			attr_data = json.load(f)
+			set_attributes(original_file, attr_data)
+		os.remove(attr_path)
 
 class App(BApplication):
 	def __init__(self):
