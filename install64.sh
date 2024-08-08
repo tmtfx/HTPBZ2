@@ -24,17 +24,17 @@ echo "Proceeding..."
 ret2=1
 fi
 echo
-if [ -e HTPBZ2.py ]
+if [ -e HTMZ.py ]
 then
 	if ! [[ -e /boot/home/config/non-packaged/data/HTPBZ2 ]]; then
 		mkdir /boot/home/config/non-packaged/data/HTPBZ2
 	fi
-	cp HTPBZ2.py /boot/home/config/non-packaged/data/HTPBZ2
+	cp HTMZ.py /boot/home/config/non-packaged/data/HTPBZ2
 	ret4=$?
-	if [ -e /boot/home/config/non-packaged/bin/HTPBZ2.py ]; then
-		rm -f /boot/home/config/non-packaged/bin/HTPBZ2.py
+	if [ -e /boot/home/config/non-packaged/bin/HTMZ.py ]; then
+		rm -f /boot/home/config/non-packaged/bin/HTMZ.py
 	fi
-	ln -s /boot/home/config/non-packaged/data/HTPBZ2/HTPBZ2.py /boot/home/config/non-packaged/bin/HTPBZ2.py
+	ln -s /boot/home/config/non-packaged/data/HTPBZ2/HTMZ.py /boot/home/config/non-packaged/bin/HTMZ.py
 	if ! [[ -e /boot/home/config/settings/deskbar/menu/Applications/ ]]; then
 		mkdir /boot/home/config/settings/deskbar/menu/Applications/
 	fi
@@ -46,11 +46,11 @@ else
 fi
 echo
 #ret6
-if [ -e DecompressTarBZ2.tar.bz2 ]
+if [ -e DecompressTMZ.tmz ]
 then
-	./HTPBZ2.py -d DecompressTarBZ2.tar.bz2 -g
-	if [ -e DecompressTarBZ2 ]; then
-		mv DecompressTarBZ2/DecompressTarBZ2 /boot/home/config/non-packaged/bin/
+	./HTMZ.py -d DecompressTMZ.tmz -g
+	if [ -e DecompressTMZ ]; then
+		mv DecompressTMZ/DecompressTMZ /boot/home/config/non-packaged/bin/
 		ret6=$?
 	fi
 else

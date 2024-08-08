@@ -3,7 +3,7 @@ import os,sys,tarfile,bz2,io,base64,datetime,struct,math,hashlib,json,configpars
 import multiprocessing
 from functools import partial
 import concurrent.futures
-from Be import BApplication, BWindow, BView, BNode,BRadioButton,BButton,BMessage, window_type, B_NOT_RESIZABLE, B_CLOSE_ON_ESCAPE, B_QUIT_ON_WINDOW_CLOSE, BTextControl, BAlert,BListView, BScrollView,BStringItem,BTextView,BRect, BBox, BFont, InterfaceDefs, BPath, BDirectory, BEntry,BStringView,BSlider,BMenu,BMenuField,BMenuItem
+from Be import BApplication, BWindow, BView, BNode,BRadioButton,BButton,BMessage, window_type, B_NOT_RESIZABLE, B_CLOSE_ON_ESCAPE, B_QUIT_ON_WINDOW_CLOSE, BTextControl, BAlert,BListView, BScrollView,BStringItem,BTextView,BRect, BBox, BFont, InterfaceDefs, BPath, BDirectory, BEntry,BStringView,BSlider,BMenu,BMenuField,BMenuItem,BFile
 from Be import BFile,BCheckBox
 from Be.FindDirectory import *
 from Be.Alert import alert_type
@@ -1106,7 +1106,7 @@ def add_attributes_to_tar(tar, path,cutter):
 		#print(md5attr_json)#TODO: Check on extract this checksum
 		#newpath=path[path.find(cutter):]
 	#	newpath=path.replace(cutter,"")
-		newpath=os.path.relpath(path,cutter)
+		newpath="./"+os.path.relpath(path,cutter)
 		#attr_info = tarfile.TarInfo(name=f"{path}.{md5attr_json}.attr")
 		attr_info = tarfile.TarInfo(name=f"{newpath}.{md5attr_json}.attr")
 		attr_info.size = len(attr_json)
@@ -1131,13 +1131,12 @@ def create_tar_with_attributes(input_paths, tar_file):
 		for input_path in input_paths:
 			if cutter==None:
 				cutter=os.path.dirname(input_path)+"/"
-			relative_path = os.path.relpath(input_path, cutter)
+			relative_path = "./"+os.path.relpath(input_path, cutter)
+			print("relat_path",relative_path)
 			tar.add(input_path, arcname=relative_path)
 			if os.path.isfile(input_path):
-				print("è file")
 				add_attributes_to_tar(tar, input_path,cutter)
 			elif os.path.isdir(input_path):
-				print("è dir")
 				add_attributes_to_tar(tar,input_path,cutter)
 				for root, _, files in os.walk(input_path):
 					for dir in _:
@@ -1191,28 +1190,25 @@ def ensure_dir_exists(directory):
 
 def extract_member_reworked(tar_data, member, output_dir, inram):
 	#try:
-		member_path = os.path.join(output_dir, member.name)
+		member_path = os.path.join(output_dir, member.name[2:])
+		#print("Vado a scrivere:",member_path)
 		# Ensure the directory exists
 		if member.isdir():
 			ensure_dir_exists(member_path)
 		else:
 			parent_dir = os.path.dirname(member_path)
 			ensure_dir_exists(parent_dir)
-
 		# Extract the member
 		tar_data.extract(member, output_dir)
-		#if inram:
-			##with tarfile.open(fileobj=tar_data, mode="r") as tar:
-				#tar_data.extract(member, output_dir)
-		#else:
-			##print(type(tar_data),tar_data)
-			##with tarfile.open(tar_data, "r") as tar:
-				#tar_data.extract(member, output_dir)
+		#f = os.open(member_path, os.O_RDWR|os.O_CREAT)
+		#os.fsync(f)
+		#os.close(f)
 	#except Exception as exc:
 	#	print(f"Generated an exception: {exc}")
 	#	print(tar_data, member, output_dir)
 
 def extract_and_set_attributes_batch_reworked(member_batch, tar_data, output_dir, inram):
+	#print("member_batch",member_batch)
 	if inram:
 		#tar_data=tarfile.open(fileobj=tar_data, mode="r")
 		pass
@@ -1233,15 +1229,35 @@ def extract_and_set_attributes_batch_reworked(member_batch, tar_data, output_dir
 		#	print("Eccezione:",exc)
 
 def extract_and_set_attributes_reworked(member, tar_data, output_dir, inram): #slow, at least on disk
-    extract_member_reworked(tar_data, member, output_dir, inram)
-
-    if member.name.endswith('.attr'):
-        attr_path = os.path.join(output_dir, member.name)
-        original_file = attr_path[:-38]  # Rimuove sia .attr che .{hash}
-        with open(attr_path, 'r') as f:
-            attr_data = json.load(f)
-            set_attributes(original_file, attr_data)
-        os.remove(attr_path)
+	extract_member_reworked(tar_data, member, output_dir, inram)
+	#op=os.path.join(output_dir, member.name[2:])
+	#bn=BNode(BEntry(op))
+	#bn.Sync()
+	#bf=BFile(op,0)
+	#r=bf.InitCheck()
+	#print("InitCheck",r)
+	#print("Is Readable:",bf.IsReadable())
+	if member.name.endswith('.attr'):
+		attr_path = os.path.join(output_dir, member.name[2:])
+		original_file = attr_path[:-38]  # Rimuove sia .attr che .{hash}
+		ent=BEntry(original_file)
+		while not(ent.Exists()):
+			#original file still not created! wait
+			pass
+		#bf=BFile(attr_path,0)
+		#r=bf.InitCheck()
+		#print("InitCheck",r)
+		#print("Is Readable:",bf.IsReadable())
+		#r,s=bf.GetSize()
+		#if r==0:
+		#	fileobj=io.BytesIO(bf.Read(s)[0])
+		#	print(fileobj)
+		#	attr_data = json.load(fileobj)
+		#	set_attributes(original_file, attr_data)
+		with open(attr_path, 'r') as f:
+			attr_data = json.load(f)
+			set_attributes(original_file, attr_data)
+		os.remove(attr_path)
 
 def set_attributes(file_path, attr_data):
     global check_hash, endianness
