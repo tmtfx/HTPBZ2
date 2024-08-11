@@ -1,10 +1,8 @@
 #!/boot/system/bin/python3
-import os,sys,tarfile,bz2,io,base64,datetime,struct,math,hashlib,json,configparser,time
-import multiprocessing
+import os,sys,tarfile,bz2,io,base64,struct,math,hashlib,json,configparser,time,multiprocessing#,datetime,
 from functools import partial
 import concurrent.futures
-from Be import BApplication, BWindow, BView, BNode,BRadioButton,BButton,BMessage, window_type, B_NOT_RESIZABLE, B_CLOSE_ON_ESCAPE, B_QUIT_ON_WINDOW_CLOSE, BTextControl, BAlert,BListView, BScrollView,BStringItem,BTextView,BRect, BBox, BFont, InterfaceDefs, BPath, BDirectory, BEntry,BStringView,BSlider,BMenu,BMenuField,BMenuItem,BFile
-from Be import BFile,BCheckBox
+from Be import BApplication, BWindow, BView, BNode,BRadioButton,BButton,BMessage, window_type, B_NOT_RESIZABLE, B_CLOSE_ON_ESCAPE, B_QUIT_ON_WINDOW_CLOSE, BTextControl, BAlert,BListView, BScrollView,BStringItem,BTextView,BRect, BBox, BFont, InterfaceDefs, BPath, BDirectory, BEntry, BStringView, BSlider, BMenu, BMenuField, BMenuItem, BFile, BCheckBox, AppDefs
 from Be.FindDirectory import *
 from Be.Alert import alert_type
 from Be.InterfaceDefs import border_style,orientation,B_CONTROL_KEY
@@ -13,7 +11,6 @@ from Be.AppDefs import *
 from Be.View import *
 from Be.GraphicsDefs import *
 from Be.Font import be_plain_font, be_bold_font
-from Be import AppDefs
 from Be.FilePanel import *
 from Be.Application import *
 from Be.Font import font_height,B_OUTLINED_FACE,B_ITALIC_FACE
@@ -23,7 +20,6 @@ from Be.Slider import hash_mark_location
 from Be.TypeConstants import *
 from pathlib import Path
 from threading import Thread
-from pathlib import Path
 
 Config=configparser.ConfigParser()
 global ver,status,rev
@@ -117,7 +113,7 @@ class AboutView(BView):
 		fon.GetHeight(font_height_value)
 		fon.SetRotation(20.0)
 		fon.SetShear(90.0)
-		r = BRect(bounds.Width()/2,bounds.Height()/2+8,fon.StringWidth(txt)+bounds.Width()/2+16,bounds.Height()-4)
+		r = BRect(bounds.Width()*2/3-16,bounds.Height()/2+8,fon.StringWidth(txt)+bounds.Width()*2/3,bounds.Height()-4)
 		self.author=BStringView(r,"app_auth",txt)
 		self.author.SetFont(fon)
 		self.AddChild(self.author,None)
