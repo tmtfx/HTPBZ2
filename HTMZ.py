@@ -1269,34 +1269,37 @@ def find_common_root(paths):
         # Handle the case where there is no common path
         return None
 
-def create_tar_in_ram_with_attributes(input_paths):
-		#tar_data = io.BytesIO()
-		#with tarfile.open(tar_data, mode="w") as tar:
-			tar_data = io.BytesIO()
-			tar=tarfile.open(fileobj=tar_data,mode='w')
-			if len(input_paths)>1:
-				cutter=find_common_root(input_paths)
-			else:
-				cutter=Path(input_paths[0]).parent
-			for input_path in input_paths:
-				if cutter==None:
-					cutter=os.path.dirname(input_path)+"/"
-				relative_path = "./"+os.path.relpath(input_path, cutter)
-				tar.add(input_path, arcname=relative_path)
-				if os.path.isfile(input_path):
-					add_attributes_to_tar(tar, input_path,cutter)
-				elif os.path.isdir(input_path):
-					add_attributes_to_tar(tar,input_path,cutter)
-					for root, _, files in os.walk(input_path):
-						for dir in _:
-							dir_path = os.path.join(root,dir)
-							add_attributes_to_tar(tar,dir_path,cutter)
-						for file in files:
-							file_path = os.path.join(root, file)
-							add_attributes_to_tar(tar, file_path,cutter)
-			#tar_data.seek(0)
-			#return tar_data
-			return tar.read()
+###### Note: due to limitations in Haiku, apps memory is limited to something about 2GB of ram
+######       then io.Bytes() cannot be used for big files. To operate in ram it has been used the
+######       /boot/system/var/shared_memory path that provides a RAM_FS space
+#def create_tar_in_ram_with_attributes(input_paths):
+#		#tar_data = io.BytesIO()
+#		#with tarfile.open(tar_data, mode="w") as tar:
+#			tar_data = io.BytesIO()
+#			tar=tarfile.open(fileobj=tar_data,mode='w')
+#			if len(input_paths)>1:
+#				cutter=find_common_root(input_paths)
+#			else:
+#				cutter=Path(input_paths[0]).parent
+#			for input_path in input_paths:
+#				if cutter==None:
+#					cutter=os.path.dirname(input_path)+"/"
+#				relative_path = "./"+os.path.relpath(input_path, cutter)
+#				tar.add(input_path, arcname=relative_path)
+#				if os.path.isfile(input_path):
+#					add_attributes_to_tar(tar, input_path,cutter)
+#				elif os.path.isdir(input_path):
+#					add_attributes_to_tar(tar,input_path,cutter)
+#					for root, _, files in os.walk(input_path):
+#						for dir in _:
+#							dir_path = os.path.join(root,dir)
+#							add_attributes_to_tar(tar,dir_path,cutter)
+#						for file in files:
+#							file_path = os.path.join(root, file)
+#							add_attributes_to_tar(tar, file_path,cutter)
+#			#tar_data.seek(0)
+#			#return tar_data
+#			return tar.read()
 def create_tar_with_attributes(input_paths, tar_file):
 		with tarfile.open(tar_file, "w") as tar:
 			if len(input_paths)>1:
@@ -1344,13 +1347,13 @@ def create_tarbz2_with_attributes(input_paths, out_file,compresslevel=9):
 							add_attributes_to_tar(tar, file_path,cutter)
 
 def create_compressed_archive(input_paths, output_file, block_size=1024*1024, compresslevel=9,autoclose=False,cinram=False):
-#	global alerts
-#	try:
+	global alerts,cparallelization
+	try:
 		if os.path.isdir(output_file): #compensate luser that indicates a directory
 			if output_file[-1]=="/":
 				output_file=output_file[:-1]
 				output_file=os.path.join(output_file,output_file.split("/")[-1])
-		if True:
+		if cparallelization==0:
 			if cinram:
 				tar_file = "/boot/system/var/shared_memory/tar_file.tar"
 			else:
@@ -1377,12 +1380,12 @@ def create_compressed_archive(input_paths, output_file, block_size=1024*1024, co
 		#	be_app.WindowAt(0).PostMessage(BMessage(107))
 		if autoclose:
 			be_app.WindowAt(0).PostMessage(B_QUIT_REQUESTED)
-#	except Exception as e:
-#		txt="Error: "+str(e)
-#		alert= BAlert('Ops', txt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_STOP_ALERT)
-#		alerts.append(alert)
-#		alert.Go()
-#		be_app.WindowAt(0).PostMessage(BMessage(107))
+	except Exception as e:
+		txt="Error: "+str(e)
+		alert= BAlert('Ops', txt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_STOP_ALERT)
+		alerts.append(alert)
+		alert.Go()
+		be_app.WindowAt(0).PostMessage(BMessage(107))
 
 def decompress_bz2(input_file):
     with bz2.BZ2File(input_file, 'rb') as file:
@@ -1407,29 +1410,17 @@ def ensure_dir_exists(directory):
 def extract_member_reworked(tar_data, member, output_dir, inram):
 	#try:
 		member_path = os.path.join(output_dir, member.name[2:])
-		#print("Vado a scrivere:",member_path)
 		# Ensure the directory exists
 		if member.isdir():
 			ensure_dir_exists(member_path)
 		else:
 			parent_dir = os.path.dirname(member_path)
 			ensure_dir_exists(parent_dir)
-		# Extract the member
 		tar_data.extract(member, output_dir)
-		#f = os.open(member_path, os.O_RDWR|os.O_CREAT)
-		#os.fsync(f)
-		#os.close(f)
 	#except Exception as exc:
 	#	print(f"Generated an exception: {exc}")
-	#	print(tar_data, member, output_dir)
 
 def extract_and_set_attributes_batch_reworked(member_batch, tar_data, output_dir, inram):
-	#print("member_batch",member_batch)
-#	if inram: in ram è su shared_memory
-#		#tar_data=tarfile.open(fileobj=tar_data, mode="r")
-#		pass
-#	else:
-#		tar_data=tarfile.open(tar_data, "r")
 	tar_data=tarfile.open(tar_data, "r")
 	for member in member_batch:
 		#try:
@@ -1444,37 +1435,6 @@ def extract_and_set_attributes_batch_reworked(member_batch, tar_data, output_dir
 				os.remove(attr_path)
 		#except Exception as exc:
 		#	print("Eccezione:",exc)
-
-def extract_and_set_attributes_reworked(member, tar_data, output_dir, inram): #slow, at least on disk
-	extract_member_reworked(tar_data, member, output_dir, inram)
-	#op=os.path.join(output_dir, member.name[2:])
-	#bn=BNode(BEntry(op))
-	#bn.Sync()
-	#bf=BFile(op,0)
-	#r=bf.InitCheck()
-	#print("InitCheck",r)
-	#print("Is Readable:",bf.IsReadable())
-#	if member.name.endswith('.attr'):
-#		attr_path = os.path.join(output_dir, member.name[2:])
-#		original_file = attr_path[:-38]  # Rimuove sia .attr che .{hash}
-#		ent=BEntry(original_file)
-#		while not(ent.Exists()):
-#			#original file still not created! wait
-#			pass
-#		#bf=BFile(attr_path,0)
-#		#r=bf.InitCheck()
-#		#print("InitCheck",r)
-#		#print("Is Readable:",bf.IsReadable())
-#		#r,s=bf.GetSize()
-#		#if r==0:
-#		#	fileobj=io.BytesIO(bf.Read(s)[0])
-#		#	print(fileobj)
-#		#	attr_data = json.load(fileobj)
-#		#	set_attributes(original_file, attr_data)
-#		with open(attr_path, 'r') as f:
-#			attr_data = json.load(f)
-#			set_attributes(original_file, attr_data)
-#		os.remove(attr_path)
 
 def set_attributes(file_path, attr_data):
     global check_hash, endianness
@@ -1588,7 +1548,7 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 		pmsg.AddString("new_extraction_label",txt)
 		be_app.WindowAt(0).PostMessage(BMessage(pmsg))#607
 		tar_data = tarfile.open(tar_file, mode='r')		
-		################
+		################ memo: Haiku app memory limitations ~2GB
 		#tar_data = decompress_bz2(input_file)
 		#be_app.WindowAt(0).PostMessage(BMessage(607))
 		#tar_data = tarfile.open(fileobj=io.BytesIO(tar_data), mode="r")
@@ -1601,27 +1561,25 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 		num_cpus = num_workers
 	if parallelization == 0:
 		tar_data.extractall(path=output_dir)
-#		# Attempt to extract tarfile members in a parallel mode
+######### Attempt to extract tarfile members in a parallel mode, this gives more problems than 
+######### achievements due to tar not being thread safe
 #		with concurrent.futures.ThreadPoolExecutor(num_cpus) as executor:
-#			futures = [executor.submit(extract_and_set_attributes_reworked, member, tar_data, output_dir,inram) for member in tar_data.getmembers()]
+#			futures = [executor.submit(extract_member_reworked, tar_data, member, output_dir,inram) for member in tar_data.getmembers()]
 #			for future in concurrent.futures.as_completed(futures):
 #					#try:
 #						future.result()
 #					#except Exception as exc:
 #					#	print(f"Generated an exception: {exc}")
-#		#TODO: mandare messaggio (adattare 607) per scrittura attributi  nel pannello di copertura
+		txt="Writing attributes..."
+		pmsg=BMessage(807)
+		pmsg.AddString("new_extraction_label",txt)
+		be_app.WindowAt(0).PostMessage(BMessage(pmsg))
 		with concurrent.futures.ThreadPoolExecutor(num_cpus) as executor:
 			futures = []
 			for root, _, files in os.walk(output_dir):
 				for file in files:
 					if file[-5:]==".attr":
 						attr_path = os.path.join(root, file)
-						#original_file = attr_path[:-38]
-						#with open(attr_path, 'r') as f:
-						#	attr_data = json.load(f)
-						#	set_attributes(original_file, attr_data)
-						#os.remove(attr_path)
-					#file_path = os.path.join(root, file)
 						futures.append(executor.submit(process_file, attr_path))
         
 			for future in concurrent.futures.as_completed(futures):
@@ -1634,18 +1592,12 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 	elif parallelization==1:
 		members = tar_data.getmembers()
 		member_batch=[]
-		#batch_size = len(members) // num_cpus
 		batch_size = max(1,len(members) // num_cpus)
 		for i in range(0, len(members), batch_size):
 			batch = members[i:i + batch_size]
 			member_batch.append(batch)
-		# Estrarre i membri del tarfile in parallelo 2 funziona e riduce parallellismo inutile
 		with concurrent.futures.ThreadPoolExecutor(num_cpus) as executor:
 			futures = [executor.submit(extract_and_set_attributes_batch_reworked, batch, tar_file, output_dir,inram) for batch in member_batch]
-#			if inram:
-#				futures = [executor.submit(extract_and_set_attributes_batch_reworked, batch, tar_data, output_dir,inram) for batch in member_batch]
-#			else:
-#				futures = [executor.submit(extract_and_set_attributes_batch_reworked, batch, tar_file, output_dir,inram) for batch in member_batch]
 			for future in concurrent.futures.as_completed(futures):
 				#try:
 					future.result()
@@ -1673,28 +1625,7 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 					almsg.AddString("error",txt)
 					be_app.WindowAt(0).PostMessage(almsg)
 				os.remove(attr_path)
-######################################################
-	#elif parallelization==4:
-	# estrarre in parallelo ma con multiprocess non si può perché non riesce a fare la serializzazione pickle
-	# siccome un file rimane aperto
-	#	if inram:
-	#		pass
-	#	else:
-	#		#with tarfile.open(tar_file, 'r') as tar:
-	#		with tarfile.open(tar_file, 'r') as tar_data:
-	#		
-	#			members = tar_data.getmembers()
-#
-#				if num_workers is None:
-#					num_workers = multiprocessing.cpu_count()
-#
-#				batch_size = len(members) // num_workers
-#
-#				with multiprocessing.Pool(num_workers) as pool:
-#					extract_partial = partial(extract_and_set_attributes, tar_data=tar_data, output_dir=output_dir,inram=inram)
-#					for i in range(0, len(members), batch_size):
-#						batch = members[i:i + batch_size]
-#						pool.map(extract_partial, batch)
+######## Secuential extraction and assignement of extra attributes ########
 	elif parallelization==3:
 	### serial - single thread: experimental - differences in output size - todo: check diffs ###
 #		with tarfile.open(tar_file, "r") as tar:
@@ -1704,7 +1635,6 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 					member_path = os.path.join(output_dir, member.name)
 					if not os.path.abspath(member_path).startswith(os.path.abspath(output_dir)):
 						raise Exception("Tentativo di estrazione fuori dalla directory di destinazione: {}".format(member.name))
-#					tar.extract(member, output_dir)
 					tar_data.extract(member, output_dir)
 					if member.name.endswith('.attr'):
 						try:
@@ -1725,7 +1655,6 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 					almsg.AddString("error",txt)
 					be_app.WindowAt(0).PostMessage(almsg)
 					break
-
 	#if not inram: #both in ram and on disk are written to a file (shared memory or file-on-disk)
 	if parallelization!=2:
 		os.remove(tar_file)
@@ -1864,7 +1793,6 @@ if __name__ == "__main__":
 						cinram=False
 				elif key == "cparallelization":
 					cparallelization = int(ConfigSectionMap("Compression")["cparallelization"])
-					print("dall'inizio, cparallelization è",cparallelization)
 		except Exception as e:
 			print(e)
 			cfgfile = open(confile.Path(),'w')
