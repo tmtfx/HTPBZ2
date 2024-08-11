@@ -29,7 +29,7 @@ Config=configparser.ConfigParser()
 global ver,status,rev
 ver="1"
 status="alpha"
-rev="20240808"
+rev="20240811"
 author="Fabio Tomat"
 
 def ConfigSectionMap(section):
@@ -56,6 +56,18 @@ class ScrollView:
 		self.sv = BScrollView(name, self.lv,B_FOLLOW_NONE,0,False,False,border_style.B_FANCY_BORDER)
 		self.sv.SetResizingMode(B_FOLLOW_TOP_BOTTOM)
 
+def read_config_file():
+	perc=BPath()
+	find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
+	ent=BEntry(perc.Path()+"/HTPBZ2")
+	if not ent.Exists():
+		return(False,None)
+	else:
+		ent.GetPath(perc)
+		confile=BPath(perc.Path()+'/config.ini',None,False)
+		return(True,confile)
+		
+
 class AboutView(BView):
 	def __init__(self,frame):
 		global rev,status,ver,author
@@ -73,7 +85,7 @@ class AboutView(BView):
 		self.name.SetFont(fon)
 		self.name.SetHighColor(255,0,0,0)
 		self.AddChild(self.name,None)
-		txt="This simple utility compresses and decompresses files and folders in tar.bz2 format, and also adds Haiku-specific attributes to the archive.\nCompression is parallelized and extraction (at your will) can be parallelized and elaborated in ram."
+		txt="This simple utility compresses and decompresses files and folders in tar.bz2 format, and also adds Haiku-specific attributes to the archive.\nCompression can be parallelized and elaborated in ram (and attributes extraction too)."
 		abrect=BRect(4,font_height_value.ascent+8, bounds.Width()-4,bounds.Height()/2-4)
 		inner_ab=BRect(4,4,abrect.Width()-4,abrect.Height()-4)
 		self.AboutText = BTextView(abrect, 'aBOUTTxTView', inner_ab , B_FOLLOW_NONE)
@@ -112,7 +124,7 @@ class AboutView(BView):
 
 class CompressView(BView):
 	def __init__(self,frame):
-		global cmplvl,save_hash,block_size
+		global cmplvl,save_hash,block_size,cinram,cparallelization
 		BView.__init__(self,frame,"Compression",8,20000000)
 		bounds=self.Bounds()
 		self.checksumbox=BBox(BRect(4,4,bounds.Width()-4,bounds.Height()-4),"checksum_box",0x0202|0x0404,border_style.B_FANCY_BORDER)
@@ -141,14 +153,26 @@ class CompressView(BView):
 		self.compr_lvl.SetBarThickness(10.0)
 		self.checksumbox.AddChild(self.compr_lvl,None)
 		self.compr_lvl.SetLimitLabels("1","9")
-		perc=BPath()
-		find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
-		ent=BEntry(perc.Path()+"/HTPBZ2")
-		if not ent.Exists():
-			self.Close()
-		else:
-			ent.GetPath(perc)
-			confile=BPath(perc.Path()+'/config.ini',None,False)
+		
+		uwu=self.StringWidth("Tar management:")+10
+		d={150:"use more resources",152:"let tar handle"}
+		self.menup=BMenu("Management")
+		self.menup.SetLabelFromMarked(True)
+		for k in d.keys():
+			self.menup.AddItem(BMenuItem(d[k], BMessage(k),d[k][0],B_CONTROL_KEY))
+		self.pbar = BMenuField(BRect(10, chkb_bounds.bottom-fon.Size()*2-4, chkb_bounds.Width()-8, chkb_bounds.bottom-fon.Size()-4), 'pop1', 'Tar management:', self.menup,B_FOLLOW_TOP)
+		self.pbar.SetDivider(uwu)
+		self.checksumbox.AddChild(self.pbar,None)
+		for k in d.keys():
+			if k-150==cparallelization:
+				itm=self.menup.FindItem(d[k])
+				itm.SetMarked(True)
+		txt="Compress in ram"
+		self.ckb_cinram=BCheckBox(BRect(4,chkb_bounds.bottom-fon.Size()-4,38+self.StringWidth(txt),chkb_bounds.bottom-4),"chkbox_compress_inram",txt,BMessage(1500))
+		self.checksumbox.AddChild(self.ckb_cinram,None)
+		ck=read_config_file()
+		if ck[0]:
+			confile=ck[1]
 			ent=BEntry(confile.Path())
 			if ent.Exists():
 				Config.read(confile.Path())
@@ -157,15 +181,26 @@ class CompressView(BView):
 					self.ckb_savesum.SetValue(1)
 				else:
 					self.ckb_savesum.SetValue(0)
+				value=ConfigSectionMap("Compression")["cinram"]
+				if value == "True":
+					self.ckb_cinram.SetValue(1)
+				else:
+					self.ckb_cinram.SetValue(0)
 				strvalue=ConfigSectionMap("Compression")["compression"]
 				value=int(strvalue)
 				self.compr_lvl.SetValue(value)
 				self.cmplvl_value.SetText(strvalue)
 				strvalue=ConfigSectionMap("Compression")["block_size"]
-
+		else:
+			self.close()
+		if cparallelization==2:
+			self.ckb_cinram.SetEnabled(0)
+		else:
+			self.ckb_cinram.SetEnabled(1)
+		
 class DecompressView(BView):
 	def __init__(self,frame):
-		global parallelization,check_hash,inram
+		global parallelization,check_hash,inram,experimental
 		BView.__init__(self,frame,"Decompression",8,20000000)
 		bounds=self.Bounds()
 		self.checksumbox=BBox(BRect(4,4,bounds.Width()-4,bounds.Height()-4),"checksum_box",0x0202|0x0404,border_style.B_FANCY_BORDER)
@@ -179,13 +214,20 @@ class DecompressView(BView):
 		self.ckb_checksum=BCheckBox(BRect(4,4,38+self.StringWidth(txt),8+fon.Size()),"check_sum",txt,BMessage(1700))
 		self.ckb_checksum.SetEnabled(0)
 		self.checksumbox.AddChild(self.ckb_checksum,None)
-		uwu=self.StringWidth("Tar parallelization:")+10
-		d={100:"Multi-threading",101:"Batched multithreading",103:"Single thread"}
-		self.menup=BMenu("Parallelization")
+		uwu=self.StringWidth("Tar management:")+10
+		if experimental:
+			# 101,103 produce different output folders in size still trying to figure out the reasons
+			d={100:"Multi-threading",101:"Batched multithreading",102:"Serial standalone",103:"Single thread"}
+		else:
+			# notes:
+			# 100: uses a serial bz2 extraction, then a serial tar.extractall and a multithreaded attributes writing
+			# 102: it lets tar handle the whole tar.bz2 (tmz) archive and then a single thread attributes writing
+			d={100:"use more resources",102:"let tar handle"}
+		self.menup=BMenu("Management")
 		self.menup.SetLabelFromMarked(True)
 		for k in d.keys():
 			self.menup.AddItem(BMenuItem(d[k], BMessage(k),d[k][0],B_CONTROL_KEY))
-		self.pbar = BMenuField(BRect(20, 28+fon.Size()*2, chkb_bounds.Width()-8, 32+3*fon.Size()), 'pop1', 'Tar parallelization:', self.menup,B_FOLLOW_TOP)
+		self.pbar = BMenuField(BRect(10, 28+fon.Size()*2, chkb_bounds.Width()-8, 32+3*fon.Size()), 'pop1', 'Tar management:', self.menup,B_FOLLOW_TOP)
 		self.pbar.SetDivider(uwu)
 		self.checksumbox.AddChild(self.pbar,None)
 		for k in d.keys():
@@ -196,6 +238,10 @@ class DecompressView(BView):
 		self.inramckbox = BCheckBox(BRect(4,80+3*fon.Size(),38+self.StringWidth(txt),84+4*fon.Size()),"check_sum",txt,BMessage(1400))
 		self.checksumbox.AddChild(self.inramckbox,None)
 		self.inramckbox.SetValue(inram)
+		if parallelization==2:
+			self.inramckbox.SetEnabled(0)
+		else:
+			self.inramckbox.SetEnabled(1)
 		self.ckb_checksum.SetValue(check_hash)
 
 class CpuStringView(BStringView):
@@ -251,14 +297,9 @@ class SettingsWindow(BWindow):
 		self.bckgnd.AddChild(self.Options.sv,None)
 		self.box = BBox(BRect(bckgnd_bounds.Width()/2.5+2,2,bckgnd_bounds.Width()-2,bckgnd_bounds.Height()-2),"optionsbox",0x0202|0x0404,border_style.B_FANCY_BORDER)
 		self.bckgnd.AddChild(self.box,None)
-		perc=BPath()
-		find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
-		ent=BEntry(perc.Path()+"/HTPBZ2")
-		if not ent.Exists():
-			self.Close()
-		else:
-			ent.GetPath(perc)
-			confile=BPath(perc.Path()+'/config.ini',None,False)
+		ck=read_config_file()
+		if ck[0]:
+			confile=ck[1]
 			ent=BEntry(confile.Path())
 			if ent.Exists():
 				Config.read(confile.Path())
@@ -272,16 +313,73 @@ class SettingsWindow(BWindow):
 				alerts.append(alert)
 				alert.Go()
 				self.Close()
+		else:
+			self.Close()
+	def set_cthreadization(self,mw):
+			global cparallelization
+			self.rmView=self.box.ChildAt(self.box.CountChildren()-1)
+			self.boxview=self.rmView.ChildAt(self.rmView.CountChildren()-1)
+			a=self.boxview.ChildAt(0)
+			endof=False
+			while True:
+				if type(a)==BCheckBox:
+					if a.Label() == "Compress in ram":
+						if mw==152:
+							a.SetEnabled(0)
+						else:
+							a.SetEnabled(1)
+						break
+				a=a.NextSibling()
+				if a == None:
+					endof=True
+					break
+			if endof:
+				saytxt="Handling wrong configuration, ignoring"
+				alert= BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
+				alerts.append(alert)
+				alert.Go()
+				return
+			ck=read_config_file()
+			if ck[0]:
+				confile=ck[1]
+				ent=BEntry(confile.Path())
+				if ent.Exists():
+					Config.read(confile.Path())
+					cfgfile = open(confile.Path(),'w')
+					cparallelization=mw-150
+					Config.set('Compression','cparallelization', str(cparallelization))
+					Config.write(cfgfile)
+					cfgfile.close()
+					Config.read(confile.Path())
+			else:
+				self.Close()
 	def set_threadization(self,mw):
 			global parallelization
-			perc=BPath()
-			find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
-			ent=BEntry(perc.Path()+"/HTPBZ2")
-			if not ent.Exists():
-				self.Close()
-			else:
-				ent.GetPath(perc)
-				confile=BPath(perc.Path()+'/config.ini',None,False)
+			self.rmView=self.box.ChildAt(self.box.CountChildren()-1)
+			self.boxview=self.rmView.ChildAt(self.rmView.CountChildren()-1)
+			a=self.boxview.ChildAt(0)
+			endof=False
+			while True:
+				if type(a)==BCheckBox:
+					if a.Label() == "Extract BZip2 in ram":
+						if mw==102:
+							a.SetEnabled(0)
+						else:
+							a.SetEnabled(1)
+						break
+				a=a.NextSibling()
+				if a == None:
+					endof=True
+					break
+			if endof:
+				saytxt="Handling wrong configuration, ignoring"
+				alert= BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
+				alerts.append(alert)
+				alert.Go()
+				return
+			ck=read_config_file()
+			if ck[0]:
+				confile=ck[1]
 				ent=BEntry(confile.Path())
 				if ent.Exists():
 					Config.read(confile.Path())
@@ -291,6 +389,8 @@ class SettingsWindow(BWindow):
 					Config.write(cfgfile)
 					cfgfile.close()
 					Config.read(confile.Path())
+			else:
+				self.Close()
 					
 	def MessageReceived(self, msg):
 		global save_hash,check_hash,num_cpus,block_size,opt_view,inram,alerts
@@ -316,8 +416,10 @@ class SettingsWindow(BWindow):
 				elif option == 'About':
 					opt_view=AboutView(myrec)
 					self.box.AddChild(opt_view,None)
-		elif msg.what in [100,101,103]:
+		elif msg.what in [100,101,102,103]:
 			self.set_threadization(msg.what)
+		elif msg.what in [150,152]:
+			self.set_cthreadization(msg.what)
 		elif msg.what == 1400:
 			self.rmView=self.box.ChildAt(self.box.CountChildren()-1)
 			self.boxview=self.rmView.ChildAt(self.rmView.CountChildren()-1)
@@ -337,14 +439,9 @@ class SettingsWindow(BWindow):
 				alerts.append(alert)
 				alert.Go()
 				return
-			perc=BPath()
-			find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
-			ent=BEntry(perc.Path()+"/HTPBZ2")
-			if not ent.Exists():
-				self.Close()
-			else:
-				ent.GetPath(perc)
-				confile=BPath(perc.Path()+'/config.ini',None,False)
+			ck=read_config_file()
+			if ck[0]:
+				confile=ck[1]
 				ent=BEntry(confile.Path())
 				if ent.Exists():
 					Config.read(confile.Path())
@@ -358,6 +455,45 @@ class SettingsWindow(BWindow):
 					Config.write(cfgfile)
 					cfgfile.close()
 					Config.read(confile.Path())
+			else:
+				self.Close()
+		elif msg.what == 1500:
+			self.rmView=self.box.ChildAt(self.box.CountChildren()-1)
+			self.boxview=self.rmView.ChildAt(self.rmView.CountChildren()-1)
+			a=self.boxview.ChildAt(0)
+			endof=False
+			while True:
+				if type(a)==BCheckBox:
+					if a.Label()=="Compress in ram":
+						break
+				a=a.NextSibling()
+				if a == None:
+					endof=True
+					break
+			if endof:
+				saytxt="Handling wrong configuration, ignoring"
+				alrt= BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
+				alerts.append(alrt)
+				alrt.Go()
+				return
+			ck=read_config_file()
+			if ck[0]:
+				confile=ck[1]
+				ent=BEntry(confile.Path())
+				if ent.Exists():
+					Config.read(confile.Path())
+					cfgfile = open(confile.Path(),'w')
+					if a.Value():
+						Config.set('Compression','cinram', "True")
+						cinram=True
+					else:
+						Config.set('Compression','cinram', "False")
+						cinram=False
+					Config.write(cfgfile)
+					cfgfile.close()
+					Config.read(confile.Path())
+			else:
+				self.Close()
 		elif msg.what == 1600:
 			self.rmView=self.box.ChildAt(self.box.CountChildren()-1)
 			self.boxview=self.rmView.ChildAt(self.rmView.CountChildren()-1)
@@ -377,14 +513,9 @@ class SettingsWindow(BWindow):
 				alerts.append(alrt)
 				alrt.Go()
 				return
-			perc=BPath()
-			find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
-			ent=BEntry(perc.Path()+"/HTPBZ2")
-			if not ent.Exists():
-				self.Close()
-			else:
-				ent.GetPath(perc)
-				confile=BPath(perc.Path()+'/config.ini',None,False)
+			ck=read_config_file()
+			if ck[0]:
+				confile=ck[1]
 				ent=BEntry(confile.Path())
 				if ent.Exists():
 					Config.read(confile.Path())
@@ -398,6 +529,8 @@ class SettingsWindow(BWindow):
 					Config.write(cfgfile)
 					cfgfile.close()
 					Config.read(confile.Path())
+			else:
+				self.Close()
 		elif msg.what == 1700:
 			self.rmView=self.box.ChildAt(self.box.CountChildren()-1)
 			self.boxview=self.rmView.ChildAt(self.rmView.CountChildren()-1)
@@ -417,14 +550,9 @@ class SettingsWindow(BWindow):
 				alerts.append(alrt)
 				alrt.Go()
 				return
-			perc=BPath()
-			find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
-			ent=BEntry(perc.Path()+"/HTPBZ2")
-			if not ent.Exists():
-				self.Close()
-			else:
-				ent.GetPath(perc)
-				confile=BPath(perc.Path()+'/config.ini',None,False)
+			ck=read_config_file()
+			if ck[0]:
+				confile=ck[1]
 				ent=BEntry(confile.Path())
 				if ent.Exists():
 					Config.read(confile.Path())
@@ -438,6 +566,8 @@ class SettingsWindow(BWindow):
 					Config.write(cfgfile)
 					cfgfile.close()
 					Config.read(confile.Path())
+			else:
+				self.Close()
 		elif msg.what == 1324:
 			self.rmView=self.box.ChildAt(self.box.CountChildren()-1)
 			self.boxview=self.rmView.ChildAt(self.rmView.CountChildren()-1)
@@ -464,14 +594,9 @@ class SettingsWindow(BWindow):
 				alerts.append(alrt)
 				alrt.Go()
 				return
-			perc=BPath()
-			find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
-			ent=BEntry(perc.Path()+"/HTPBZ2")
-			if not ent.Exists():
-				self.Close()
-			else:
-				ent.GetPath(perc)
-				confile=BPath(perc.Path()+'/config.ini',None,False)
+			ck=read_config_file()
+			if ck[0]:
+				confile=ck[1]
 				ent=BEntry(confile.Path())
 				if ent.Exists():
 					Config.read(confile.Path())
@@ -481,15 +606,26 @@ class SettingsWindow(BWindow):
 					cfgfile.close()
 					Config.read(confile.Path())
 					block_size=v
+			else:
+				self.Close()
 		elif msg.what == 4221:
 			self.rmView=self.box.ChildAt(self.box.CountChildren()-1)
 			self.boxview=self.rmView.ChildAt(self.rmView.CountChildren()-1)
-			self.slid=self.boxview.ChildAt(self.boxview.CountChildren()-1)
-			if type(self.slid)!=BSlider:
+			a=self.boxview.ChildAt(0)
+			endof=False
+			while True:
+				if type(a)==BSlider:
+					self.slid=a
+					break
+				a=a.NextSibling()
+				if a == None:
+					endof=True
+					break
+			if endof:
 				saytxt="Handling wrong configuration, ignoring"
-				alrt= BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
-				alerts.append(alrt)
-				alrt.Go()
+				alert= BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
+				alerts.append(alert)
+				alert.Go()
 				return
 			a=self.boxview.ChildAt(0)
 			num_cpus=self.slid.Value()
@@ -512,15 +648,10 @@ class SettingsWindow(BWindow):
 				alerts.append(alrt)
 				alrt.Go()
 				return
-			perc=BPath()
-			find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
-			ent=BEntry(perc.Path()+"/HTPBZ2")
-			if not ent.Exists():
-				self.Close()
-			else:
+			ck=read_config_file()
+			if ck[0]:
+				confile=ck[1]
 				v=self.slid.Value()
-				ent.GetPath(perc)
-				confile=BPath(perc.Path()+'/config.ini',None,False)
 				ent=BEntry(confile.Path())
 				if ent.Exists():
 					Config.read(confile.Path())
@@ -529,18 +660,27 @@ class SettingsWindow(BWindow):
 					Config.write(cfgfile)
 					cfgfile.close()
 					Config.read(confile.Path())
-					#txt=v+"/"+str(multiprocessing.cpu_count())
-					#self.cpus_value.SetText(txt)
 					self.cpus_value.SetValue(v)
+			else:
+				self.Close()
 		elif msg.what == 1224:
 			self.rmView=self.box.ChildAt(self.box.CountChildren()-1)
 			self.boxview=self.rmView.ChildAt(self.rmView.CountChildren()-1)
-			self.slid=self.boxview.ChildAt(self.boxview.CountChildren()-1)
-			if type(self.slid)!=BSlider:
+			a=self.boxview.ChildAt(0)
+			endof=False
+			while True:
+				if type(a)==BSlider:
+					self.slid=a
+					break
+				a=a.NextSibling()
+				if a == None:
+					endof=True
+					break
+			if endof:
 				saytxt="Handling wrong configuration, ignoring"
-				alrt= BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
-				alerts.append(alrt)
-				alrt.Go()
+				alert= BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
+				alerts.append(alert)
+				alert.Go()
 				return
 			self.cmplvl_value=self.boxview.ChildAt(self.boxview.CountChildren()-4)
 			if type(self.cmplvl_value)!=BStringView:
@@ -549,16 +689,10 @@ class SettingsWindow(BWindow):
 				alerts.append(alrt)
 				alrt.Go()
 				return
-			
-			perc=BPath()
-			find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
-			ent=BEntry(perc.Path()+"/HTPBZ2")
-			if not ent.Exists():
-				self.Close()
-			else:
+			ck=read_config_file()
+			if ck[0]:
+				confile=ck[1]
 				v=str(self.slid.Value())
-				ent.GetPath(perc)
-				confile=BPath(perc.Path()+'/config.ini',None,False)
 				ent=BEntry(confile.Path())
 				if ent.Exists():
 					Config.read(confile.Path())
@@ -574,7 +708,7 @@ class SettingsWindow(BWindow):
 class HTPBZ2Window(BWindow):
 	opf=""
 	def __init__(self,cmds,args):
-		global timings#,block_size,cmplvl
+		global timings,experimental#,block_size,cmplvl
 		BWindow.__init__(self, BRect(200,170,800,278), "TMZ Compressor/Decompressor", window_type.B_TITLED_WINDOW, B_NOT_RESIZABLE |B_QUIT_ON_WINDOW_CLOSE)
 		self.bckgnd = BView(self.Bounds(), "bckgnd_View", 8, 20000000)
 		rect=self.bckgnd.Bounds()
@@ -644,6 +778,7 @@ class HTPBZ2Window(BWindow):
 		self.autoload=""
 		self.autorun=False
 		self.setcmd=False
+		experimental=False
 		osdir="/boot/home/Desktop"
 		osfile="/boot/home/Desktop/output.tmz"
 		if args!=[]:
@@ -665,10 +800,8 @@ class HTPBZ2Window(BWindow):
 				if BEntry(a).Exists():
 					osdir=os.path.dirname(os.path.abspath(a))
 					if len(self.list_autol)>1:
-						#osfile=os.path.basename(os.path.abspath(osdir))+".tar.bz2"
 						osfile=osdir+"/"+os.path.basename(os.path.abspath(osdir))+".tmz"
 					else:
-						#osfile=os.path.basename(os.path.abspath(a))+".tar.bz2"
 						osfile=os.path.abspath(a)+".tmz"
 				else:
 					osdir=os.getcwd()
@@ -715,6 +848,8 @@ class HTPBZ2Window(BWindow):
 					self.autorun=True
 					if self.setcmd and self.autoload!="":
 						be_app.WindowAt(0).PostMessage(1024)
+			elif cmd=="e":
+				experimental=True
 		
 		self.fp.SetPanelDirectory(osdir)
 		self.fp.SetSaveText(osfile)
@@ -785,10 +920,13 @@ class HTPBZ2Window(BWindow):
 			self.settings_window.Show()
 		elif msg.what == 507:
 			self.cwip2.SetText("Parallel BZip2 compression...")
-		elif msg.what == 607:
-			self.ewip2.SetText("Extracting tar archive...")
-		elif msg.what == 707:
-			self.ewip2.SetText("Decompressing BZip2 file...")
+		# elif msg.what == 607:
+			# self.ewip2.SetText("Extracting tar archive...")
+		# elif msg.what == 707:
+			# self.ewip2.SetText("Decompressing BZip2 file...")
+		elif msg.what == 807:
+			txt=msg.FindString("new_extraction_label")
+			self.ewip2.SetText(txt)
 		elif msg.what == 714:
 			saytxt=msg.FindString("error")
 			infoA=BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
@@ -806,9 +944,6 @@ class HTPBZ2Window(BWindow):
 				
 				fout=self.output.Text()
 				if fout=="":
-					##fout=os.path.dirname(self.list_autol[0])
-					##fout=os.getcwd()+"/"+os.path.basename(self.list_autol[0])+".tar.bz2"
-					#fout=os.path.abspath(self.list_autol[0])+".tar.bz2"
 					supposedpath=os.path.abspath(self.list_autol[0])+".tmz"
 					if os.access(os.path.dirname(supposedpath), os.W_OK):
 						fout=supposedpath
@@ -819,7 +954,7 @@ class HTPBZ2Window(BWindow):
 						supposedpath="/boot/home/Desktop/"+os.path.basename(fout)+".tmz"
 						self.output.SetText(supposedpath)
 						fout=supposedpath
-				thr=Thread(target=create_compressed_archive,args=(self.list_autol,fout,block_size,cmplvl,self.autorun,))
+				thr=Thread(target=create_compressed_archive,args=(self.list_autol,fout,block_size,cmplvl,self.autorun,cinram,))
 				thr.start()
 			else:
 				paths=self.input.Text().split(",")
@@ -845,14 +980,9 @@ class HTPBZ2Window(BWindow):
 				self.GoBtn.SetEnabled(False)
 				self.box.Hide()
 				self.extrelbox.Show()
-				perc=BPath()
-				find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
-				ent=BEntry(perc.Path()+"/HTPBZ2")
-				if not ent.Exists():
-					inram=False
-				else:
-					ent.GetPath(perc)
-					confile=BPath(perc.Path()+'/config.ini',None,False)
+				ck=read_config_file()
+				if ck[0]:
+					confile=ck[1]
 					ent=BEntry(confile.Path())
 					if ent.Exists():
 						Config.read(confile.Path())
@@ -863,9 +993,9 @@ class HTPBZ2Window(BWindow):
 							inram=False
 					else:
 						inram=False
+				else:
+					inram=False
 				Thread(target=launch_extractions,args=(paths,self.output.Text(),self.autorun,inram)).start()
-			#if self.autorun:
-				#be_app.WindowAt(0).PostMessage(B_QUIT_REQUESTED)
 			self.autorun=False
 			self.setcmd=False
 		elif msg.what == 191:
@@ -916,7 +1046,10 @@ def launch_extractions(paths,outputxt,autoclose,inram=False):
 #	global alerts
 #	try:
 		for path in paths:
-			be_app.WindowAt(0).PostMessage(BMessage(707))
+			txt="Decompressing BZip2 file..."
+			pmsg=BMessage(807)
+			pmsg.AddString("new_extraction_label",txt)
+			be_app.WindowAt(0).PostMessage(BMessage(pmsg))#707
 			suf="".join(Path(path).suffixes)
 			out=os.path.basename(path[:-len(suf)])
 			complout=outputxt+"/"+out
@@ -1011,6 +1144,23 @@ def parallel_compress_file(input_file, output_file, block_size=1024*1024, compre
 			for compressed_block in compressed_blocks:
 				f.write(compressed_block)
 
+def parallel_compress_in_ram_file(input_data, output_file, block_size=1024*1024, compresslevel=9):
+	global num_cpus
+	blocks = []
+	while True:
+		block = input_data.read(block_size)
+		if not block:
+			break
+		blocks.append(block)
+
+	with multiprocessing.Pool(num_cpus) as pool:
+			compress_partial = partial(compress_block, compresslevel=compresslevel)
+			compressed_blocks = pool.map(compress_partial, blocks)
+        
+	with open(output_file, 'wb') as f:
+		for compressed_block in compressed_blocks:
+			f.write(compressed_block)
+
 def add_attributes_to_tar(tar, path,cutter):
 	global save_hash,endianness
 	nf=BNode(path)
@@ -1104,10 +1254,7 @@ def add_attributes_to_tar(tar, path,cutter):
 		attr_json = json.dumps(attr_data).encode('utf-8')
 		md5attr_json=str(get_bytes_md5(attr_json))
 		#print(md5attr_json)#TODO: Check on extract this checksum
-		#newpath=path[path.find(cutter):]
-	#	newpath=path.replace(cutter,"")
 		newpath="./"+os.path.relpath(path,cutter)
-		#attr_info = tarfile.TarInfo(name=f"{path}.{md5attr_json}.attr")
 		attr_info = tarfile.TarInfo(name=f"{newpath}.{md5attr_json}.attr")
 		attr_info.size = len(attr_json)
 		#with open("jsondata.txt", 'w') as f:
@@ -1122,50 +1269,120 @@ def find_common_root(paths):
         # Handle the case where there is no common path
         return None
 
+def create_tar_in_ram_with_attributes(input_paths):
+		#tar_data = io.BytesIO()
+		#with tarfile.open(tar_data, mode="w") as tar:
+			tar_data = io.BytesIO()
+			tar=tarfile.open(fileobj=tar_data,mode='w')
+			if len(input_paths)>1:
+				cutter=find_common_root(input_paths)
+			else:
+				cutter=Path(input_paths[0]).parent
+			for input_path in input_paths:
+				if cutter==None:
+					cutter=os.path.dirname(input_path)+"/"
+				relative_path = "./"+os.path.relpath(input_path, cutter)
+				tar.add(input_path, arcname=relative_path)
+				if os.path.isfile(input_path):
+					add_attributes_to_tar(tar, input_path,cutter)
+				elif os.path.isdir(input_path):
+					add_attributes_to_tar(tar,input_path,cutter)
+					for root, _, files in os.walk(input_path):
+						for dir in _:
+							dir_path = os.path.join(root,dir)
+							add_attributes_to_tar(tar,dir_path,cutter)
+						for file in files:
+							file_path = os.path.join(root, file)
+							add_attributes_to_tar(tar, file_path,cutter)
+			#tar_data.seek(0)
+			#return tar_data
+			return tar.read()
 def create_tar_with_attributes(input_paths, tar_file):
-	with tarfile.open(tar_file, "w") as tar:
-		if len(input_paths)>1:
-			cutter=find_common_root(input_paths)
-		else:
-			cutter=Path(input_paths[0]).parent
-		for input_path in input_paths:
-			if cutter==None:
-				cutter=os.path.dirname(input_path)+"/"
-			relative_path = "./"+os.path.relpath(input_path, cutter)
-			tar.add(input_path, arcname=relative_path)
-			if os.path.isfile(input_path):
-				add_attributes_to_tar(tar, input_path,cutter)
-			elif os.path.isdir(input_path):
-				add_attributes_to_tar(tar,input_path,cutter)
-				for root, _, files in os.walk(input_path):
-					for dir in _:
-						dir_path = os.path.join(root,dir)
-						add_attributes_to_tar(tar,dir_path,cutter)
-					for file in files:
-						file_path = os.path.join(root, file)
-						add_attributes_to_tar(tar, file_path,cutter)
+		with tarfile.open(tar_file, "w") as tar:
+			if len(input_paths)>1:
+				cutter=find_common_root(input_paths)
+			else:
+				cutter=Path(input_paths[0]).parent
+			for input_path in input_paths:
+				if cutter==None:
+					cutter=os.path.dirname(input_path)+"/"
+				relative_path = "./"+os.path.relpath(input_path, cutter)
+				tar.add(input_path, arcname=relative_path)
+				if os.path.isfile(input_path):
+					add_attributes_to_tar(tar, input_path,cutter)
+				elif os.path.isdir(input_path):
+					add_attributes_to_tar(tar,input_path,cutter)
+					for root, _, files in os.walk(input_path):
+						for dir in _:
+							dir_path = os.path.join(root,dir)
+							add_attributes_to_tar(tar,dir_path,cutter)
+						for file in files:
+							file_path = os.path.join(root, file)
+							add_attributes_to_tar(tar, file_path,cutter)
 
-def create_compressed_archive(input_paths, output_file, block_size=1024*1024, compresslevel=9,autoclose=False):
-	global alerts
-	try:
+def create_tarbz2_with_attributes(input_paths, out_file,compresslevel=9):
+		with tarfile.open(out_file, "w:bz2") as tar:
+			if len(input_paths)>1:
+				cutter=find_common_root(input_paths)
+			else:
+				cutter=Path(input_paths[0]).parent
+			for input_path in input_paths:
+				if cutter==None:
+					cutter=os.path.dirname(input_path)+"/"
+				relative_path = "./"+os.path.relpath(input_path, cutter)
+				tar.add(input_path, arcname=relative_path)
+				if os.path.isfile(input_path):
+					add_attributes_to_tar(tar, input_path,cutter)
+				elif os.path.isdir(input_path):
+					add_attributes_to_tar(tar,input_path,cutter)
+					for root, _, files in os.walk(input_path):
+						for dir in _:
+							dir_path = os.path.join(root,dir)
+							add_attributes_to_tar(tar,dir_path,cutter)
+						for file in files:
+							file_path = os.path.join(root, file)
+							add_attributes_to_tar(tar, file_path,cutter)
+
+def create_compressed_archive(input_paths, output_file, block_size=1024*1024, compresslevel=9,autoclose=False,cinram=False):
+#	global alerts
+#	try:
 		if os.path.isdir(output_file): #compensate luser that indicates a directory
 			if output_file[-1]=="/":
 				output_file=output_file[:-1]
 				output_file=os.path.join(output_file,output_file.split("/")[-1])
-		tar_file = output_file + '.tar'
-		create_tar_with_attributes(input_paths, tar_file)
-		be_app.WindowAt(0).PostMessage(BMessage(507))
-		parallel_compress_file(tar_file, output_file, block_size, compresslevel)
-		os.remove(tar_file)
+		if True:
+			if cinram:
+				tar_file = "/boot/system/var/shared_memory/tar_file.tar"
+			else:
+				tar_file = output_file + '.tar'
+			create_tar_with_attributes(input_paths, tar_file)
+			be_app.WindowAt(0).PostMessage(BMessage(507))
+			parallel_compress_file(tar_file, output_file, block_size, compresslevel)
+			os.remove(tar_file)
+		else:
+			create_tarbz2_with_attributes(input_paths,output_file,compresslevel)
+		
 		be_app.WindowAt(0).PostMessage(BMessage(107))
+		#if not cinram:
+		#	tar_file = output_file + '.tar'
+		#	create_tar_with_attributes(input_paths, tar_file)
+		#	be_app.WindowAt(0).PostMessage(BMessage(507))
+		#	parallel_compress_file(tar_file, output_file, block_size, compresslevel)
+		#	os.remove(tar_file)
+		#	be_app.WindowAt(0).PostMessage(BMessage(107))
+		#else:
+		#	tar_data=create_tar_in_ram_with_attributes(input_paths)
+		#	be_app.WindowAt(0).PostMessage(BMessage(507))
+		#	parallel_compress_in_ram_file(tar_data, output_file, block_size, compresslevel)
+		#	be_app.WindowAt(0).PostMessage(BMessage(107))
 		if autoclose:
 			be_app.WindowAt(0).PostMessage(B_QUIT_REQUESTED)
-	except Exception as e:
-		txt="Error: "+str(e)
-		alert= BAlert('Ops', txt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_STOP_ALERT)
-		alerts.append(alert)
-		alert.Go()
-		be_app.WindowAt(0).PostMessage(BMessage(107))
+#	except Exception as e:
+#		txt="Error: "+str(e)
+#		alert= BAlert('Ops', txt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_STOP_ALERT)
+#		alerts.append(alert)
+#		alert.Go()
+#		be_app.WindowAt(0).PostMessage(BMessage(107))
 
 def decompress_bz2(input_file):
     with bz2.BZ2File(input_file, 'rb') as file:
@@ -1208,11 +1425,12 @@ def extract_member_reworked(tar_data, member, output_dir, inram):
 
 def extract_and_set_attributes_batch_reworked(member_batch, tar_data, output_dir, inram):
 	#print("member_batch",member_batch)
-	if inram:
-		#tar_data=tarfile.open(fileobj=tar_data, mode="r")
-		pass
-	else:
-		tar_data=tarfile.open(tar_data, "r")
+#	if inram: in ram è su shared_memory
+#		#tar_data=tarfile.open(fileobj=tar_data, mode="r")
+#		pass
+#	else:
+#		tar_data=tarfile.open(tar_data, "r")
+	tar_data=tarfile.open(tar_data, "r")
 	for member in member_batch:
 		#try:
 			#print(member)
@@ -1342,7 +1560,7 @@ def set_attributes(file_path, attr_data):
 
 
 def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False,num_workers=None):
-	global parallelization
+	global parallelization,almsg
 	if parallelization == 0:
 		if inram:
 			print("decompressione in ram parallelizzata")
@@ -1353,22 +1571,30 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 			print("decompressione in ram parallelizzata in lotti")
 		else:
 			print("decompressione su disco parallelizzata in lotti")
-	elif parallelization == 1:
+	elif parallelization == 3:
 		if inram:
 			print("decompressione in ram seriale in unico thread")
 		else:
 			print("decompressione su disco seriale in unico thread")
 
-	tar_file = input_file + '.tar'
-
-	if inram:
-		tar_data = decompress_bz2(input_file)
-		be_app.WindowAt(0).PostMessage(BMessage(607))
-		tar_data = tarfile.open(fileobj=io.BytesIO(tar_data), mode="r")
-	else:
+	if parallelization!=2:
+		if inram:
+			tar_file = "/boot/system/var/shared_memory/"+os.path.basename(input_file) + '.tar'
+		else:
+			tar_file = input_file + '.tar'
 		decompress__bz2_in_file(input_file, tar_file, block_size)
-		be_app.WindowAt(0).PostMessage(BMessage(607))
-		tar_data = tarfile.open(tar_file, mode='r')
+		txt="Extracting tar archive..."
+		pmsg=BMessage(807)
+		pmsg.AddString("new_extraction_label",txt)
+		be_app.WindowAt(0).PostMessage(BMessage(pmsg))#607
+		tar_data = tarfile.open(tar_file, mode='r')		
+		################
+		#tar_data = decompress_bz2(input_file)
+		#be_app.WindowAt(0).PostMessage(BMessage(607))
+		#tar_data = tarfile.open(fileobj=io.BytesIO(tar_data), mode="r")
+		################
+		#tar_data = tarfile.open(fileobj=decompress_bz2(input_file), mode="r") Test not working
+
 	if num_workers==None:
 		num_cpus = multiprocessing.cpu_count()
 	else:
@@ -1383,7 +1609,7 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 #						future.result()
 #					#except Exception as exc:
 #					#	print(f"Generated an exception: {exc}")
-		#TODO: mandare messaggio (adattare 607) per scrittura attributi  nel pannello di copertura
+#		#TODO: mandare messaggio (adattare 607) per scrittura attributi  nel pannello di copertura
 		with concurrent.futures.ThreadPoolExecutor(num_cpus) as executor:
 			futures = []
 			for root, _, files in os.walk(output_dir):
@@ -1403,7 +1629,8 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 					future.result()  # Verifica eventuali eccezioni
 				except Exception as e:
 					print(f"Errore nell'elaborazione: {e}")
-
+####################################################
+## batched parallelization: experimental - differences in output size - todo: check diffs ###
 	elif parallelization==1:
 		members = tar_data.getmembers()
 		member_batch=[]
@@ -1414,17 +1641,40 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 			member_batch.append(batch)
 		# Estrarre i membri del tarfile in parallelo 2 funziona e riduce parallellismo inutile
 		with concurrent.futures.ThreadPoolExecutor(num_cpus) as executor:
-			if inram:
-				futures = [executor.submit(extract_and_set_attributes_batch_reworked, batch, tar_data, output_dir,inram) for batch in member_batch]
-			else:
-				futures = [executor.submit(extract_and_set_attributes_batch_reworked, batch, tar_file, output_dir,inram) for batch in member_batch]
+			futures = [executor.submit(extract_and_set_attributes_batch_reworked, batch, tar_file, output_dir,inram) for batch in member_batch]
+#			if inram:
+#				futures = [executor.submit(extract_and_set_attributes_batch_reworked, batch, tar_data, output_dir,inram) for batch in member_batch]
+#			else:
+#				futures = [executor.submit(extract_and_set_attributes_batch_reworked, batch, tar_file, output_dir,inram) for batch in member_batch]
 			for future in concurrent.futures.as_completed(futures):
 				#try:
 					future.result()
 				#except Exception as exc:
 				#	print(f"Generated an exception: {exc}")
-#######################################################
-	#elif parallelization==2:
+############ Estrazione lasciata a tar (r:bz2) *******************
+	elif parallelization==2:
+		txt="Extracting tar.bz2 archive..."
+		pmsg=BMessage(807)
+		pmsg.AddString("new_extraction_label",txt)
+		be_app.WindowAt(0).PostMessage(BMessage(pmsg))
+		tar_data = tarfile.open(input_file, mode='r:bz2')
+		tar_data.extractall(path=output_dir)
+		for member in tar_data.getmembers():
+			if member.name.endswith('.attr'):
+				try:
+					attr_path = os.path.join(output_dir, member.name)
+					original_file = attr_path[:-38]  # Rimuove sia .attr che .{hash}
+					with open(attr_path, 'r') as f:
+						attr_data = json.load(f)
+						set_attributes(original_file, attr_data)
+				except Exception as exc:
+					txt=(f"Errore nel gestire gli attributi: {exc}")
+					almsg=BMessage(714)
+					almsg.AddString("error",txt)
+					be_app.WindowAt(0).PostMessage(almsg)
+				os.remove(attr_path)
+######################################################
+	#elif parallelization==4:
 	# estrarre in parallelo ma con multiprocess non si può perché non riesce a fare la serializzazione pickle
 	# siccome un file rimane aperto
 	#	if inram:
@@ -1446,6 +1696,7 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 #						batch = members[i:i + batch_size]
 #						pool.map(extract_partial, batch)
 	elif parallelization==3:
+	### serial - single thread: experimental - differences in output size - todo: check diffs ###
 #		with tarfile.open(tar_file, "r") as tar:
 #			for member in tar.getmembers():
 			for member in tar_data.getmembers():
@@ -1456,11 +1707,17 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 #					tar.extract(member, output_dir)
 					tar_data.extract(member, output_dir)
 					if member.name.endswith('.attr'):
-						attr_path = os.path.join(output_dir, member.name)
-						original_file = attr_path[:-38]  # Rimuove sia .attr che .{hash}
-						with open(attr_path, 'r') as f:
-							attr_data = json.load(f)
-							set_attributes(original_file, attr_data)
+						try:
+							attr_path = os.path.join(output_dir, member.name)
+							original_file = attr_path[:-38]  # Rimuove sia .attr che .{hash}
+							with open(attr_path, 'r') as f:
+								attr_data = json.load(f)
+								set_attributes(original_file, attr_data)
+						except Exception as exc:
+							txt=(f"Errore nel gestire gli attributi: {exc}")
+							almsg=BMessage(714)
+							almsg.AddString("error",txt)
+							be_app.WindowAt(0).PostMessage(almsg)
 						os.remove(attr_path)
 				except Exception as e:
 					txt=(f"Errore durante l'estrazione del file {member.name}: {e}")
@@ -1469,7 +1726,8 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 					be_app.WindowAt(0).PostMessage(almsg)
 					break
 
-	if not inram:
+	#if not inram: #both in ram and on disk are written to a file (shared memory or file-on-disk)
+	if parallelization!=2:
 		os.remove(tar_file)
 	be_app.WindowAt(0).PostMessage(BMessage(107))
 
@@ -1493,8 +1751,8 @@ class App(BApplication):
 		self.window.Show()
 	def ArgvReceived(self,num,args):# argvReceived is executed before readytorun
 		global timings
-		with open("tmp.txt","w") as f:
-			f.write(str(args))
+		#with open("tmp.txt","w") as f:
+		#	f.write(str(args))
 		timings=False
 		realargs=args
 		if args[1][-7:]=="HTMZ.py":
@@ -1504,7 +1762,7 @@ class App(BApplication):
 				remit=[]
 				for ra in realargs:
 					if len(ra)==2 and ra[0]=="-":
-						if ra[1] in ["c","d","g"]:
+						if ra[1] in ["c","d","g","e"]:
 							self.cmd.append(ra[1])
 							remit.append(ra)
 						if ra[1] == "t":
@@ -1556,7 +1814,7 @@ def main():
     be_app.Run()
 	
 if __name__ == "__main__":
-	global save_hash,check_hash,endianness,parallelization,cmplvl,block_size,num_cpus,inram,alerts
+	global save_hash,check_hash,endianness,parallelization,cmplvl,block_size,num_cpus,inram,cinram,alerts,cparallelization
 	alerts=[]
 	perc=BPath()
 	find_directory(directory_which.B_USER_NONPACKAGED_DATA_DIRECTORY,perc,False,None)
@@ -1598,6 +1856,15 @@ if __name__ == "__main__":
 					cmplvl = int(ConfigSectionMap("Compression")["compression"])
 				elif key == "block_size":
 					block_size = int(ConfigSectionMap("Compression")["block_size"])
+				elif key == "cinram":
+					value = ConfigSectionMap("Compression")["cinram"]
+					if value == "True":
+						cinram=True
+					else:
+						cinram=False
+				elif key == "cparallelization":
+					cparallelization = int(ConfigSectionMap("Compression")["cparallelization"])
+					print("dall'inizio, cparallelization è",cparallelization)
 		except Exception as e:
 			print(e)
 			cfgfile = open(confile.Path(),'w')
@@ -1605,7 +1872,10 @@ if __name__ == "__main__":
 			Config.set('Compression','savesum', "False")
 			Config.set('Compression','compression', "9")
 			Config.set('Compression','block_size', "1048576")
+			Config.set('Compression','cinram', "True")
+			Config.set('Compression','cparallelization', "0")
 			save_hash=False
+			cinram=True
 			cmplvl=9
 			block_size=1048576
 			Config.write(cfgfile)
@@ -1636,7 +1906,8 @@ if __name__ == "__main__":
 			Config.set('Decompression','inram', "True")
 			check_hash=False
 			parallelization=0
-			inram=False
+			cparallelization=0
+			inram=True
 			Config.write(cfgfile)
 			cfgfile.close()
 		Config.read(confile.Path())
@@ -1651,14 +1922,18 @@ if __name__ == "__main__":
 		Config.set('Compression','savesum', "False")
 		Config.set('Compression','compression', "9")
 		Config.set('Compression','block_size', "1048576")
+		Config.set('Compression','cinram', "True")
+		Config.set('Compression','cparallelization', "0")
 		Config.add_section('Decompression')
 		Config.set('Decompression','checksum', "False")
 		Config.set('Decompression','parallelization', "0")
 		Config.set('Decompression','inram', "True")
+		cinram=True
 		check_hash=False
 		parallelization=0
+		cparallelization=0
 		save_hash=False
-		inram=False
+		inram=True
 		cmplvl=9
 		block_size=1048576
 		Config.write(cfgfile)
