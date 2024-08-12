@@ -1,5 +1,5 @@
 #!/bin/bash
-#ret3
+
 echo "Do you wish to git clone & compile Haiku-PyAPI to your system? (type y or n)"
 read text
 if [ $text == "y" ]
@@ -38,48 +38,75 @@ then
 	if ! [[ -e /boot/home/config/settings/deskbar/menu/Applications/ ]]; then
 		mkdir /boot/home/config/settings/deskbar/menu/Applications/
 	fi
-	#ret5
+	ln -s /boot/home/config/non-packaged/bin/HTMZ.py /boot/home/config/settings/deskbar/menu/Applications/HTMZ
+	ret5=$?
 else
 	echo Main program missing
 	ret4=1
-	#ret5=1
+	ret5=1
 fi
 echo
-#ret6
 if [ -e DecompressTMZ.tmz ]
 then
-	./HTMZ.py -d DecompressTMZ.tmz -g
+	2>/dev/null 1>&2 ./HTMZ.py -d DecompressTMZ.tmz -g
 	if [ -e DecompressTMZ ]; then
 		mv DecompressTMZ/DecompressTMZ /boot/home/config/non-packaged/bin/
 		ret6=$?
+		rm -rf DecompressTMZ
 	fi
 else
 	ret6=1
 fi
 
-if [ $ret2 -lt 1 ]
+if [ -e x-tmz.tmz ]
 then
-	echo Installation of Haiku-PyAPI OK
-	if [ $ret7 -lt 1 ]
-	then
-		echo Copy of Haiku-PyAPI libraries in python site-packages OK
+	2>/dev/null 1>&2 ./HTMZ.py -d x-tmz.tmz -g
+	if [ -e x-tmz ]; then
+		mv x-tmz/x-tmz /boot/home/config/settings/mime_db/application/
+		ret8=$?
+		rm -rf x-tmz
 	else
-		echo Copy of Haiku-PyAPI libraries in python site-packages FAILED
+		ret8=1
 	fi
 else
-	echo Installation of Haiku-PyAPI FAILED
+	ret8=1
+fi
+
+if [ $ret2 -lt 1 ]
+then
+	echo -e "Installation of Haiku-PyAPI \e[37;42mOK\e[0m"
+	if [ $ret7 -lt 1 ]
+	then
+		echo -e "Copy of Haiku-PyAPI libraries in python site-packages \e[37;42mOK\e[0m"
+	else
+		echo -e "Copy of Haiku-PyAPI libraries in python site-packages \e[37;41mFAILED\e[0m"
+	fi
+else
+	echo -e "Installation of Haiku-PyAPI \e[37;41mFAILED\e[0m"
 fi
 
 if [ $ret4 -lt 1 ] 
 then
-        echo Installation of HTPBZ2 OK
+        echo -e "Installation of HTPBZ2 \e[37;42mOK\e[0m"
 else
-        echo Installation of HTPBZ2 FAILED
+        echo -e Installation of HTPBZ2 "\e[37;41mFAILED\e[0m"
 fi
-if [ $ret6 -lt 1 ] 
+if [ $ret5 -lt 1 ] 
 then
-        echo Decompressor launcher installation OK
+        echo -e "Deskbar menu entry installation \e[37;42mOK\e[0m"
 else
-        echo Decompressor launcher installation FAILED
+        echo -e Deskbar menu entry installation "\e[37;41mFAILED\e[0m"
 fi
 
+if [ $ret6 -lt 1 ] 
+then
+        echo -e "Decompressor launcher installation \e[37;42mOK\e[0m"
+else
+        echo -e Decompressor launcher installation "\e[37;41mFAILED\e[0m"
+fi
+if [ $ret8 -lt 1 ] 
+then
+        echo -e "FileType installation \e[37;42mOK\e[0m"
+else
+        echo -e FileType installation "\e[37;41mFAILED\e[0m"
+fi

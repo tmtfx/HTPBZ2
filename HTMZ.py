@@ -81,7 +81,7 @@ class AboutView(BView):
 		self.name.SetFont(fon)
 		self.name.SetHighColor(255,0,0,0)
 		self.AddChild(self.name,None)
-		txt="This simple utility compresses and decompresses files and folders in tar.bz2 format, and also adds Haiku-specific attributes to the archive.\nCompression can be parallelized and elaborated in ram (and attributes extraction too)."
+		txt="This simple utility compresses and decompresses files and folders in a tar.bz2 format, and also adds Haiku-specific attributes to the archive.\nCompression can be parallelized and elaborated in ram (and attributes extraction too)."
 		abrect=BRect(4,font_height_value.ascent+8, bounds.Width()-4,bounds.Height()/2-4)
 		inner_ab=BRect(4,4,abrect.Width()-4,abrect.Height()-4)
 		self.AboutText = BTextView(abrect, 'aBOUTTxTView', inner_ab , B_FOLLOW_NONE)
