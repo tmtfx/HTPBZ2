@@ -46,6 +46,9 @@ else
 	ret5=1
 fi
 echo
+alt="$(uname -p)"
+txt="x86_64"
+if [ "$alt" = "$txt" ]; then
 if [ -e DecompressTMZ.tmz ]
 then
 	2>/dev/null 1>&2 ./HTMZ.py -d DecompressTMZ.tmz -g
@@ -56,6 +59,19 @@ then
 	fi
 else
 	ret6=1
+fi
+else
+if [ -e DecompressTMZx86.tmz ]
+then
+	2>/dev/null 1>&2 ./HTMZ.py -d DecompressTMZx86.tmz -g
+	if [ -e DecompressTMZx86 ]; then
+		mv DecompressTMZx86/DecompressTMZ /boot/home/config/non-packaged/bin/
+		ret6=$?
+		rm -rf DecompressTMZx86
+	fi
+else
+	ret6=1
+fi
 fi
 
 if [ -e x-tmz.tmz ]
