@@ -1591,7 +1591,9 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 					if file[-5:]==".attr":
 						attr_path = os.path.join(root, file)
 						futures.append(executor.submit(process_file, attr_path))
-        
+					elif file[-12:]==".TMZchecksum":
+						checksum_path = os.path.join(root, file)
+						futures.append(executor.submit(check_file, checksum_path))
 			for future in concurrent.futures.as_completed(futures):
 				try:
 					future.result()  # Verifica eventuali eccezioni
@@ -1637,7 +1639,7 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 				#os.remove(attr_path)
 					os.remove(attr_path)
 			if member.name.endswith('.TMZchecksum'):
-				#try:
+				try:
 					checksum_path = os.path.join(output_dir, member.name)
 					original_file = checksum_path[:-12]
 					with open(checksum_path, 'r') as f:
@@ -1651,13 +1653,12 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 						print("checksum OK")
 					else:
 						print("checksum FAILED")
-				#except Exception as exc:
-				#	txt=(f"Errore nel gestire i checksum: {exc}")
-				#	almsg=BMessage(714)
-				#	almsg.AddString("error",txt)
-				#	be_app.WindowAt(0).PostMessage(almsg)
-				#os.remove(attr_path)
-					os.remove(checksum_path)
+				except Exception as exc:
+					txt=(f"Errore nel gestire i checksum: {exc}")
+					almsg=BMessage(714)
+					almsg.AddString("error",txt)
+					be_app.WindowAt(0).PostMessage(almsg)
+				os.remove(checksum_path)
 ######## Secuential extraction and assignement of extra attributes ########
 	elif parallelization==3:
 	### serial - single thread: experimental - differences in output size - todo: check diffs ###
@@ -1701,6 +1702,23 @@ def process_file(attr_path):
 			attr_data = json.load(f)
 			set_attributes(original_file, attr_data)
 		os.remove(attr_path)
+		
+def check_file(checksum_path):
+	original_file = checksum_path[:-12]
+	ent=BEntry(original_file)
+	if ent.Exists():
+		with open(checksum_path, 'r') as f:
+			svdchksum=f.read()
+		with open(original_file, 'rb') as f:
+			data=f.read()
+			actchksum=get_bytes_md5(data)
+		print("saved",svdchksum)
+		print("actual",actchksum)
+		if actchksum==svdchksum:
+			print("checksum OK")
+		else:
+			print("checksum FAILED")
+		os.remove(checksum_path)
 
 class App(BApplication):
 	def __init__(self):
