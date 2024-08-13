@@ -24,8 +24,8 @@ from threading import Thread
 Config=configparser.ConfigParser()
 global ver,status,rev
 ver="1"
-status="alpha"
-rev="20240811"
+status="beta"
+rev="20240812"
 author="Fabio Tomat"
 
 def ConfigSectionMap(section):
@@ -137,7 +137,7 @@ class CompressView(BView):
 		self.checksumbox.AddChild(self.cmplvl_value,None)
 		txt="Save checksums in archives"
 		self.ckb_savesum=BCheckBox(BRect(4,4,38+self.StringWidth(txt),font_height_value.ascent+8),"save_chksum",txt,BMessage(1600))
-		self.ckb_savesum.SetEnabled(0)
+		#self.ckb_savesum.SetEnabled(0)
 		self.checksumbox.AddChild(self.ckb_savesum,None)
 		r=BRect(4,fon.Size()+12,bounds.right-12,fon.Size()*2+20)
 		self.BlkSz=BTextControl(r,"block_size_txt","Block size:",str(block_size),BMessage(1324))
@@ -1157,8 +1157,8 @@ def parallel_compress_in_ram_file(input_data, output_file, block_size=1024*1024,
 		for compressed_block in compressed_blocks:
 			f.write(compressed_block)
 
-def add_attributes_to_tar(tar, path,cutter):
-	global save_hash,endianness
+def add_attributes_to_tar(tar, path,cutter,md5_file=None):
+	global save_hash,endianness,save_hash
 	nf=BNode(path)
 	try:
 		attributes=attr(nf)
@@ -1253,9 +1253,16 @@ def add_attributes_to_tar(tar, path,cutter):
 		newpath="./"+os.path.relpath(path,cutter)
 		attr_info = tarfile.TarInfo(name=f"{newpath}.{md5attr_json}.attr")
 		attr_info.size = len(attr_json)
+		
+			
 		#with open("jsondata.txt", 'w') as f:
 		#	f.write(attr_json.decode("utf-8"))
 		tar.addfile(attr_info, io.BytesIO(attr_json))
+		if save_hash and md5_file!=None:
+			md5data=md5_file.encode('utf-8')
+			chksum_info = tarfile.TarInfo(name=f"{newpath}.TMZchecksum")
+			chksum_info.size = len(md5data)
+			tar.addfile(chksum_info, io.BytesIO(md5data))
 
 def find_common_root(paths):
     try:
@@ -1306,9 +1313,15 @@ def create_tar_with_attributes(input_paths, tar_file):
 				if cutter==None:
 					cutter=os.path.dirname(input_path)+"/"
 				relative_path = "./"+os.path.relpath(input_path, cutter)
+				if save_hash and os.path.isfile(input_path):
+					with open(input_path, 'rb') as f:
+						data = f.read()
+						md5_returned = get_bytes_md5(data)
+				else:
+					md5_returned=None
 				tar.add(input_path, arcname=relative_path)
 				if os.path.isfile(input_path):
-					add_attributes_to_tar(tar, input_path,cutter)
+					add_attributes_to_tar(tar, input_path,cutter,md5_returned)
 				elif os.path.isdir(input_path):
 					add_attributes_to_tar(tar,input_path,cutter)
 					for root, _, files in os.walk(input_path):
@@ -1317,9 +1330,16 @@ def create_tar_with_attributes(input_paths, tar_file):
 							add_attributes_to_tar(tar,dir_path,cutter)
 						for file in files:
 							file_path = os.path.join(root, file)
+							if save_hash:
+								with open(file_path, 'rb') as f:
+									data = f.read()
+									md5_returned = get_bytes_md5(data)
+							else:
+								md5_returned=None
 							add_attributes_to_tar(tar, file_path,cutter)
 
 def create_tarbz2_with_attributes(input_paths, out_file,compresslevel=9):
+		global save_hash
 		with tarfile.open(out_file, "w:bz2") as tar:
 			if len(input_paths)>1:
 				cutter=find_common_root(input_paths)
@@ -1329,9 +1349,15 @@ def create_tarbz2_with_attributes(input_paths, out_file,compresslevel=9):
 				if cutter==None:
 					cutter=os.path.dirname(input_path)+"/"
 				relative_path = "./"+os.path.relpath(input_path, cutter)
+				if save_hash and os.path.isfile(input_path):
+					with open(input_path, 'rb') as f:
+						data = f.read()
+						md5_returned = get_bytes_md5(data)
+				else:
+					md5_returned=None
 				tar.add(input_path, arcname=relative_path)
 				if os.path.isfile(input_path):
-					add_attributes_to_tar(tar, input_path,cutter)
+					add_attributes_to_tar(tar, input_path,cutter,md5_returned)
 				elif os.path.isdir(input_path):
 					add_attributes_to_tar(tar,input_path,cutter)
 					for root, _, files in os.walk(input_path):
@@ -1340,7 +1366,13 @@ def create_tarbz2_with_attributes(input_paths, out_file,compresslevel=9):
 							add_attributes_to_tar(tar,dir_path,cutter)
 						for file in files:
 							file_path = os.path.join(root, file)
-							add_attributes_to_tar(tar, file_path,cutter)
+							if save_hash:
+								with open(file_path, 'rb') as f:
+									data = f.read()
+									md5_returned = get_bytes_md5(data)
+							else:
+								md5_returned=None
+							add_attributes_to_tar(tar, file_path,cutter,md5_returned)
 
 def create_compressed_archive(input_paths, output_file, block_size=1024*1024, compresslevel=9,autoclose=False,cinram=False):
 	global alerts,cparallelization
@@ -1517,22 +1549,22 @@ def set_attributes(file_path, attr_data):
 
 def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False,num_workers=None):
 	global parallelization,almsg
-	if parallelization == 0:
-		if inram:
-			print("decompressione in ram parallelizzata")
-		else:
-			print("decompressione su disco parallelizzata")
-	elif parallelization == 1:
-		if inram:
-			print("decompressione in ram parallelizzata in lotti")
-		else:
-			print("decompressione su disco parallelizzata in lotti")
-	elif parallelization == 3:
-		if inram:
-			print("decompressione in ram seriale in unico thread")
-		else:
-			print("decompressione su disco seriale in unico thread")
-
+#	if parallelization == 0:
+#		if inram:
+#			print("decompressione in ram parallelizzata")
+#		else:
+#			print("decompressione su disco parallelizzata")
+#	elif parallelization == 1:
+#		if inram:
+#			print("decompressione in ram parallelizzata in lotti")
+#		else:
+#			print("decompressione su disco parallelizzata in lotti")
+#	elif parallelization == 3:
+#		if inram:
+#			print("decompressione in ram seriale in unico thread")
+#		else:
+#			print("decompressione su disco seriale in unico thread")
+#
 	if parallelization!=2:
 		if inram:
 			tar_file = "/boot/system/var/shared_memory/"+os.path.basename(input_file) + '.tar'
@@ -1732,6 +1764,44 @@ class App(BApplication):
 	def Pulse(self):
 		be_app.WindowAt(0).PostMessage(BMessage(66))
 
+def write_def_system_config():
+	global num_cpus,endianness
+	cfgfile = open(confile.Path(),'w')
+	Config.add_section('System')
+	get_endianness()
+	num_cpus=multiprocessing.cpu_count()
+	Config.set('System','endianness', endianness)
+	Config.set('System','cpus', str(num_cpus))
+	Config.write(cfgfile)
+	cfgfile.close()
+
+def write_def_compression_config():
+	global save_hash,cinram,cmplvl,block_size,cparallelization
+	cfgfile = open(confile.Path(),'w')
+	Config.add_section('Compression')
+	Config.set('Compression','savesum', "False")
+	Config.set('Compression','compression', "9")
+	Config.set('Compression','block_size', "1048576")
+	Config.set('Compression','cinram', "True")
+	Config.set('Compression','cparallelization', "0")
+	save_hash=False
+	cinram=True
+	cmplvl=9
+	block_size=1048576
+	Config.write(cfgfile)
+	cfgfile.close()
+
+def write_def_decompression_config():
+	cfgfile = open(confile.Path(),'w')
+	Config.add_section('Decompression')
+	Config.set('Decompression','checksum', "False")
+	Config.set('Decompression','parallelization', "0")
+	Config.set('Decompression','inram', "True")
+	check_hash=False
+	parallelization=0
+	inram=True
+	Config.write(cfgfile)
+	cfgfile.close()
 
 def main():
     global be_app
@@ -1753,87 +1823,115 @@ if __name__ == "__main__":
 	if ent.Exists():
 		Config.read(confile.Path())
 		try:
-			for key in Config["System"]:
-				if key == "endianness":
-					endianness = ConfigSectionMap("System")["endianness"]
-				elif key == "cpus":
-					num_cpus = int(ConfigSectionMap("System")["cpus"])
+			l=Config["System"]
+			if "endianness" in l:
+				endianness = ConfigSectionMap("System")["endianness"]
+			else:
+				cfgfile = open(confile.Path(),'w')
+				get_endianness()
+				Config.set('System','endianness', endianness)
+				Config.write(cfgfile)
+				cfgfile.close()
+			if "cpus" in l:
+				num_cpus = int(ConfigSectionMap("System")["cpus"])
+			else:
+				cfgfile = open(confile.Path(),'w')
+				num_cpus=multiprocessing.cpu_count()
+				Config.set('System','cpus', str(num_cpus))
+				Config.write(cfgfile)
+				cfgfile.close()
 		except Exception as e:
-			print(e)
-			cfgfile = open(confile.Path(),'w')
-			Config.add_section('System')
-			get_endianness()
-			num_cpus=multiprocessing.cpu_count()
-			Config.set('System','endianness', endianness)
-			Config.set('System','cpus', str(num_cpus))
-			Config.write(cfgfile)
-			cfgfile.close()
+			write_def_system_config()
 		Config.read(confile.Path())
 		try:
-			for key in Config["Compression"]:
-				if key == "savesum":
-					value = ConfigSectionMap("Compression")["savesum"]
-					if value == "True":
-						save_hash=True
-					else:
-						save_hash=False
-				elif key == "compression":
-					cmplvl = int(ConfigSectionMap("Compression")["compression"])
-				elif key == "block_size":
-					block_size = int(ConfigSectionMap("Compression")["block_size"])
-				elif key == "cinram":
-					value = ConfigSectionMap("Compression")["cinram"]
-					if value == "True":
-						cinram=True
-					else:
-						cinram=False
-				elif key == "cparallelization":
-					cparallelization = int(ConfigSectionMap("Compression")["cparallelization"])
+			l=Config["Compression"]
+			if "savesum" in l:
+				value = ConfigSectionMap("Compression")["savesum"]
+				if value == "True":
+					save_hash=True
+				else:
+					save_hash=False
+			else:
+				cfgfile = open(confile.Path(),'w')
+				save_hash=False
+				Config.set('Compression','savesum', "False")
+				Config.write(cfgfile)
+				cfgfile.close()
+			if "compression" in l:
+				cmplvl = int(ConfigSectionMap("Compression")["compression"])
+			else:
+				cfgfile = open(confile.Path(),'w')
+				Config.set('Compression','compression', "9")
+				cmplvl=9
+				Config.write(cfgfile)
+				cfgfile.close()
+			if "block_size" in l:
+				block_size = int(ConfigSectionMap("Compression")["block_size"])
+			else:
+				cfgfile = open(confile.Path(),'w')
+				Config.set('Compression','block_size', "1048576")
+				block_size=1048576
+				Config.write(cfgfile)
+				cfgfile.close()
+			if "cinram" in l:
+				value = ConfigSectionMap("Compression")["cinram"]
+				if value == "True":
+					cinram=True
+				else:
+					cinram=False
+			else:
+				cfgfile = open(confile.Path(),'w')
+				Config.set('Compression','cinram', "True")
+				cinram=True
+				Config.write(cfgfile)
+				cfgfile.close()
+			if 	"cparallelization" in l:
+				cparallelization = int(ConfigSectionMap("Compression")["cparallelization"])
+			else:
+				cfgfile = open(confile.Path(),'w')
+				Config.set('Compression','cparallelization', "0")
+				cparallelization=0
+				Config.write(cfgfile)
+				cfgfile.close()
 		except Exception as e:
-			print(e)
-			cfgfile = open(confile.Path(),'w')
-			Config.add_section('Compression')
-			Config.set('Compression','savesum', "False")
-			Config.set('Compression','compression', "9")
-			Config.set('Compression','block_size', "1048576")
-			Config.set('Compression','cinram', "True")
-			Config.set('Compression','cparallelization', "0")
-			save_hash=False
-			cinram=True
-			cmplvl=9
-			block_size=1048576
-			Config.write(cfgfile)
-			cfgfile.close()
+			write_def_compression_config()
 		Config.read(confile.Path())
 		try:
-			for key in Config["Decompression"]:
-				if key == "checksum":
-					value = ConfigSectionMap("Decompression")["checksum"]
-					if value == "True":
-						check_hash=True
-					else:
-						check_hash=False
-				elif key == "parallelization":
-					parallelization = int(ConfigSectionMap("Decompression")["parallelization"])
-				elif key == "inram":
-					value = ConfigSectionMap("Decompression")["inram"]
-					if value == "True":
-						inram=True
-					else:
-						inram=False
+			l = Config["Decompression"]
+			if "checksum" in l:
+				value = ConfigSectionMap("Decompression")["checksum"]
+				if value == "True":
+					check_hash=True
+				else:
+					check_hash=False
+			else:
+				cfgfile = open(confile.Path(),'w')
+				Config.set('Decompression','checksum', "False")
+				check_hash=False
+				Config.write(cfgfile)
+				cfgfile.close()
+			if "parallelization" in l:
+				parallelization = int(ConfigSectionMap("Decompression")["parallelization"])
+			else:
+				cfgfile = open(confile.Path(),'w')
+				Config.set('Decompression','parallelization', "0")
+				parallelization=0
+				Config.write(cfgfile)
+				cfgfile.close()
+			if "inram" in l:
+				value = ConfigSectionMap("Decompression")["inram"]
+				if value == "True":
+					inram=True
+				else:
+					inram=False
+			else:
+				cfgfile = open(confile.Path(),'w')
+				Config.set('Decompression','inram', "True")
+				inram=True
+				Config.write(cfgfile)
+				cfgfile.close()
 		except Exception as e:
-			print(e)
-			cfgfile = open(confile.Path(),'w')
-			Config.add_section('Decompression')
-			Config.set('Decompression','checksum', "False")
-			Config.set('Decompression','parallelization', "0")
-			Config.set('Decompression','inram', "True")
-			check_hash=False
-			parallelization=0
-			cparallelization=0
-			inram=True
-			Config.write(cfgfile)
-			cfgfile.close()
+			write_def_decompression_config()
 		Config.read(confile.Path())
 	else:
 		cfgfile = open(confile.Path(),'w')
@@ -1863,5 +1961,5 @@ if __name__ == "__main__":
 		Config.write(cfgfile)
 		cfgfile.close()
 		Config.read(confile.Path())
-	
+
 	main()
