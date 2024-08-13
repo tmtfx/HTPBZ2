@@ -2,7 +2,7 @@
 import os,sys,tarfile,bz2,io,base64,struct,math,hashlib,json,configparser,time,multiprocessing#,datetime,
 from functools import partial
 import concurrent.futures
-from Be import BApplication, BWindow, BView, BNode,BRadioButton,BButton,BMessage, window_type, B_NOT_RESIZABLE, B_CLOSE_ON_ESCAPE, B_QUIT_ON_WINDOW_CLOSE, BTextControl, BAlert,BListView, BScrollView,BStringItem,BTextView,BRect, BBox, BFont, InterfaceDefs, BPath, BDirectory, BEntry, BStringView, BSlider, BMenu, BMenuField, BMenuItem, BFile, BCheckBox, AppDefs
+from Be import BApplication, BWindow, BView, BNode,BRadioButton,BButton,BMessage, window_type, B_NOT_RESIZABLE, B_CLOSE_ON_ESCAPE, B_QUIT_ON_WINDOW_CLOSE, BTextControl, BAlert,BListView, BScrollView,BStringItem,BTextView,BRect, BBox, BFont, InterfaceDefs, BPath, BDirectory, BEntry, BStringView, BSlider, BMenu, BMenuField, BMenuItem, BFile, BCheckBox, AppDefs, BScreen,BListItem
 from Be.FindDirectory import *
 from Be.Alert import alert_type
 from Be.InterfaceDefs import border_style,orientation,B_CONTROL_KEY
@@ -10,10 +10,9 @@ from Be.ListView import list_view_type
 from Be.AppDefs import *
 from Be.View import *
 from Be.GraphicsDefs import *
-from Be.Font import be_plain_font, be_bold_font
 from Be.FilePanel import *
 from Be.Application import *
-from Be.Font import font_height,B_OUTLINED_FACE,B_ITALIC_FACE
+from Be.Font import font_height,B_OUTLINED_FACE,B_ITALIC_FACE,be_plain_font, be_bold_font
 from Be.Entry import entry_ref, get_ref_for_path
 from Be.StorageDefs import node_flavor
 from Be.Slider import hash_mark_location
@@ -44,12 +43,12 @@ def ConfigSectionMap(section):
 class ScrollView:
 	HiWhat = 53 #Doppioclick
 	SectionSelection = 54
-	def __init__(self, rect, name):
+	def __init__(self, rect, name,vsb=False):
 		self.lv = BListView(rect, name, list_view_type.B_SINGLE_SELECTION_LIST)
 		self.lv.SetResizingMode(B_FOLLOW_TOP_BOTTOM)
 		self.lv.SetSelectionMessage(BMessage(self.SectionSelection))
 		self.lv.SetInvocationMessage(BMessage(self.HiWhat))
-		self.sv = BScrollView(name, self.lv,B_FOLLOW_NONE,0,False,False,border_style.B_FANCY_BORDER)
+		self.sv = BScrollView(name, self.lv,B_FOLLOW_NONE,0,False,vsb,border_style.B_FANCY_BORDER)
 		self.sv.SetResizingMode(B_FOLLOW_TOP_BOTTOM)
 
 def read_config_file():
@@ -1027,6 +1026,7 @@ class HTPBZ2Window(BWindow):
 				self.list_autol=self.opf.split(",")
 		elif msg.what == 1800:
 			self.list_autol=self.input.Text().split(",")
+		return BWindow.MessageReceived(self,msg)
 	def QuitRequested(self):
 		#wnum = be_app.CountWindows()
 		#if wnum>1:
@@ -1035,10 +1035,70 @@ class HTPBZ2Window(BWindow):
 		#			wind.Lock()
 		#			wind.Quit()
 		return BWindow.QuitRequested(self)
-
+		
+class ReportWindow(BWindow):
+	def __init__(self):
+		global alerts,reps
+		reps=[]
+		scr=BScreen()
+		scrfrm=scr.Frame()
+		x=scrfrm.Width()/2-400
+		xf=x+800
+		y=scrfrm.Height()/3
+		yf=scrfrm.Height()*2/3
+		self.deltay=yf-y
+		BWindow.__init__(self, BRect(x,y,xf,yf), "Report", window_type.B_FLOATING_WINDOW,  B_NOT_RESIZABLE|B_CLOSE_ON_ESCAPE)
+		self.bckgnd = BView(self.Bounds(), "bckgnd_View", 8, 20000000)
+		bckgnd_bounds=self.bckgnd.Bounds()
+		self.AddChild(self.bckgnd,None)
+		self.bckgnd.SetResizingMode(B_FOLLOW_ALL_SIDES)
+		self.Reports = ScrollView(BRect(4 , 4, bckgnd_bounds.Width()-22, bckgnd_bounds.Height()-4 ), 'ReportScrollView',True)
+		self.bckgnd.AddChild(self.Reports.sv,None)
+	def MessageReceived(self, msg):
+		global reps
+		if msg.what == 53:
+			pass
+		elif msg.what == 12345:
+			txt=msg.FindString("testo")
+			self.Reports.lv.AddItem(BStringItem(txt))
+		elif msg.what == 54321:
+			fileno=msg.FindString("fileno")
+			attrib=msg.FindString("attrib")
+			result=msg.FindBool("result")
+			reps.append(ReportAttribItem(fileno,attrib,result))
+			self.Reports.lv.AddItem(reps[-1])
+		return BWindow.MessageReceived(self,msg)
+	def FrameResized(self,x,y):
+		self.ResizeTo(800,self.deltay)
+class ReportAttribItem(BListItem):
+	def __init__(self,filename,attribute,result):
+		self.result=result
+		self.attribute=attribute
+		self.filename=filename
+		self.fon=BFont()
+		self.font_height_value=font_height()
+		self.fon.GetHeight(self.font_height_value)
+		BListItem.__init__(self)
+	def DrawItem(self, owner, frame, complete):
+		owner.SetHighColor(255,255,255,255)
+		owner.SetLowColor(0,0,0,0)
+		if self.IsSelected() or complete:
+			owner.SetHighColor(200,200,200,255)
+			owner.SetLowColor(200,200,200,255)
+		owner.FillRect(frame)
+		if self.result:
+			owner.SetHighColor(0,150,0,0)
+		else:
+			owner.SetHighColor(150,0,0,0)
+		owner.MovePenTo(frame.left+5,frame.bottom-self.font_height_value.descent)
+		owner.DrawString(self.attribute,None)
+		spazio=frame.left+5+self.fon.StringWidth(self.attribute)+5
+		owner.MovePenTo(spazio,frame.bottom-self.font_height_value.descent)
+		owner.DrawString(self.filename,None)
+		owner.SetLowColor(255,255,255,255)
 def launch_extractions(paths,outputxt,autoclose,inram=False):
-	#global alerts
-	#try:
+	global alerts
+	try:
 		for path in paths:
 			txt="Decompressing BZip2 file..."
 			pmsg=BMessage(807)
@@ -1050,12 +1110,12 @@ def launch_extractions(paths,outputxt,autoclose,inram=False):
 			decompress_archive(path, complout,inram=inram)
 		if autoclose:
 			be_app.WindowAt(0).PostMessage(B_QUIT_REQUESTED)
-	#except Exception as e:
-	#	txt="Error: "+str(e)
-	#	alert= BAlert('Ops', txt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_STOP_ALERT)
-	#	alerts.append(alert)
-	#	alert.Go()
-	#	be_app.WindowAt(0).PostMessage(BMessage(107))
+	except Exception as e:
+		txt="Error: "+str(e)
+		alert= BAlert('Ops', txt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_STOP_ALERT)
+		alerts.append(alert)
+		alert.Go()
+		be_app.WindowAt(0).PostMessage(BMessage(107))
 
 def get_str_md5(txt):
 	return hashlib.md5(txt.encode('utf-8')).hexdigest()
@@ -1129,7 +1189,6 @@ def parallel_compress_file(input_file, output_file, block_size=1024*1024, compre
 				if not block:
 					break
 				blocks.append(block)
-		
 		with multiprocessing.Pool(num_cpus) as pool:
 			compress_partial = partial(compress_block, compresslevel=compresslevel)
 			compressed_blocks = pool.map(compress_partial, blocks)
@@ -1463,90 +1522,131 @@ def extract_and_set_attributes_batch_reworked(member_batch, tar_data, output_dir
 		#	print("Eccezione:",exc)
 
 def set_attributes(file_path, attr_data):
-    global check_hash, endianness
+	global check_hash, endianness,alerts
 
-    for name, details in attr_data.items():
-        attr_value = details['value']
-        attr_type = details['type']
-        attr_size = details['size']
-        # if check_hash:
-        try:
-            attr_hash = details['hash']
-        except:
-            check_hash = False
-
-        node = BNode(file_path)
-        ck = get_type_string(details['type'])
-        if ck == 'RAWT':
-            attr_value = base64.b64decode(attr_value)
-            if check_hash:
-                if get_bytes_md5(attr_value) == attr_hash:
-                    print(file_path, name, "attribute checksum OK")
-                else:
-                    print(file_path, name, "attribute checksum Failed")
-        elif ck == 'LONG':
-            attr_value = int(attr_value)
-            attr_value = attr_value.to_bytes(4, byteorder=endianness)
-            if check_hash:
-                if get_bytes_md5(attr_value) == attr_hash:
-                    print(file_path, name, "attribute checksum OK")
-                else:
-                    print(file_path, name, "attribute checksum Failed")
-        elif ck == 'LLNG':
-            attr_value = int(attr_value)
-            attr_value = attr_value.to_bytes(8, byteorder=endianness)
-            if check_hash:
-                if get_bytes_md5(attr_value) == attr_hash:
-                    print(file_path, name, "attribute checksum OK")
-                else:
-                    print(file_path, name, "attribute checksum Failed")
-        elif ck == 'TIME':
-            if check_hash:
-                if get_bytes_md5(int(attr_value).to_bytes(8, byteorder=endianness)) == attr_hash:
-                    print(file_path, name, "attribute checksum OK")
-                else:
-                    print(file_path, name, "attribute checksum Failed")
-            attr_value = int(attr_value).to_bytes(8, byteorder=endianness)
-        elif ck == 'CSTR' or ck == 'MIMS':
-            attr_value = str.encode(attr_value)
-            if check_hash:
-                if get_bytes_md5(attr_value) == attr_hash:
-                    print(file_path, name, "attribute checksum OK")
-                else:
-                    print(file_path, name, "attribute checksum Failed")
-        elif ck == 'BOOL':
-            attr_value = bytes(attr_value, 'utf-8')
-            if check_hash:
-                if get_bytes_md5(attr_value) == attr_hash:
-                    print(file_path, name, "attribute checksum OK")
-                else:
-                    print(file_path, name, "attribute checksum Failed")
-        elif ck == 'FLOT':
-            attr_value = base64.b64decode(attr_value)
-            if check_hash:
-                if get_bytes_md5(attr_value) == attr_hash:
-                    print(file_path, name, "attribute checksum OK")
-                else:
-                    print(file_path, name, "attribute checksum Failed")
-        elif ck == 'DBLE':
-            attr_value = base64.b64decode(attr_value)
-            if check_hash:
-                if get_bytes_md5(attr_value) == attr_hash:
-                    print(file_path, name, "attribute checksum OK")
-                else:
-                    print(file_path, name, "attribute checksum Failed")
-        else:
-            attr_value = base64.b64decode(attr_value)
-            if check_hash:
-                if get_bytes_md5(attr_value) == attr_hash:
-                    print(file_path, name, "attribute checksum OK")
-                else:
-                    print(file_path, name, "attribute checksum Failed")
-        node.WriteAttr(name, attr_type, 0, attr_value)
+	for name, details in attr_data.items():
+		attr_value = details['value']
+		attr_type = details['type']
+		attr_size = details['size']
+		# if check_hash:
+		try:
+			attr_hash = details['hash']
+		except:
+			if check_hash:
+				txt=(f"Checksum checks disabled: missing checksum hashes in attribs data")
+				almsg=BMessage(714)
+				almsg.AddString("error",txt)
+				be_app.WindowAt(0).PostMessage(almsg)
+				almsg=BMessage(12345)
+				txt="missing checksum hashes in attribs data"
+				almsg.AddString("testo",txt)
+				be_app.WindowAt(0).PostMessage(almsg)
+				for w in alerts:
+					if type(w)==ReportWindow:
+						w.PostMessage(almsg)
+			check_hash = False
+		if check_hash:
+			almsg=BMessage(54321)
+			almsg.AddString("fileno",file_path)
+			almsg.AddString("attrib",name)
+		node = BNode(file_path)
+		ck = get_type_string(details['type'])
+		if ck == 'RAWT':
+			attr_value = base64.b64decode(attr_value)
+			if check_hash:
+				if get_bytes_md5(attr_value) == attr_hash:
+					almsg.AddBool("result",True)
+					#print(file_path, name, "attribute checksum OK")
+				else:
+					almsg.AddBool("result",False)
+					#print(file_path, name, "attribute checksum Failed")
+		elif ck == 'LONG':
+			attr_value = int(attr_value)
+			attr_value = attr_value.to_bytes(4, byteorder=endianness)
+			if check_hash:
+				if get_bytes_md5(attr_value) == attr_hash:
+					almsg.AddBool("result",True)
+					#print(file_path, name, "attribute checksum OK")
+				else:
+					almsg.AddBool("result",False)
+					#print(file_path, name, "attribute checksum Failed")
+		elif ck == 'LLNG':
+			attr_value = int(attr_value)
+			attr_value = attr_value.to_bytes(8, byteorder=endianness)
+			if check_hash:
+				if get_bytes_md5(attr_value) == attr_hash:
+					almsg.AddBool("result",True)
+					#print(file_path, name, "attribute checksum OK")
+				else:
+					almsg.AddBool("result",False)
+					#print(file_path, name, "attribute checksum Failed")
+		elif ck == 'TIME':
+			if check_hash:
+				if get_bytes_md5(int(attr_value).to_bytes(8, byteorder=endianness)) == attr_hash:
+					almsg.AddBool("result",True)
+					#print(file_path, name, "attribute checksum OK")
+				else:
+					almsg.AddBool("result",False)
+					#print(file_path, name, "attribute checksum Failed")
+			attr_value = int(attr_value).to_bytes(8, byteorder=endianness)
+		elif ck == 'CSTR' or ck == 'MIMS':
+			attr_value = str.encode(attr_value)
+			if check_hash:
+				if get_bytes_md5(attr_value) == attr_hash:
+					almsg.AddBool("result",True)
+					#print(file_path, name, "attribute checksum OK")
+				else:
+					almsg.AddBool("result",False)
+					#print(file_path, name, "attribute checksum Failed")
+		elif ck == 'BOOL':
+			attr_value = bytes(attr_value, 'utf-8')
+			if check_hash:
+				if get_bytes_md5(attr_value) == attr_hash:
+					almsg.AddBool("result",True)
+					#print(file_path, name, "attribute checksum OK")
+				else:
+					almsg.AddBool("result",False)
+					#print(file_path, name, "attribute checksum Failed")
+		elif ck == 'FLOT':
+			attr_value = base64.b64decode(attr_value)
+			if check_hash:
+				if get_bytes_md5(attr_value) == attr_hash:
+					almsg.AddBool("result",True)
+					#print(file_path, name, "attribute checksum OK")
+				else:
+					almsg.AddBool("result",False)
+					#print(file_path, name, "attribute checksum Failed")
+		elif ck == 'DBLE':
+			attr_value = base64.b64decode(attr_value)
+			if check_hash:
+				if get_bytes_md5(attr_value) == attr_hash:
+					almsg.AddBool("result",True)
+					#print(file_path, name, "attribute checksum OK")
+				else:
+					almsg.AddBool("result",False)
+					#print(file_path, name, "attribute checksum Failed")
+		else:
+			attr_value = base64.b64decode(attr_value)
+			if check_hash:
+				if get_bytes_md5(attr_value) == attr_hash:
+					almsg.AddBool("result",True)
+					#print(file_path, name, "attribute checksum OK")
+				else:
+					almsg.AddBool("result",False)
+					#print(file_path, name, "attribute checksum Failed")
+		if check_hash:
+			for w in alerts:
+				if type(w)==ReportWindow:
+					w.PostMessage(almsg)
+		node.WriteAttr(name, attr_type, 0, attr_value)
 
 
 def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False,num_workers=None):
-	global parallelization,almsg
+	global parallelization,check_hash,alerts
+	if check_hash:
+		reports_window = ReportWindow()
+		alerts.append(reports_window)
+		reports_window.Show()
 	if parallelization!=2:
 		if inram:
 			tar_file = "/boot/system/var/shared_memory/"+os.path.basename(input_file) + '.tar'
@@ -1625,34 +1725,34 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 		tar_data.extractall(path=output_dir)
 		for member in tar_data.getmembers():
 			if member.name.endswith('.attr'):
-				#try:
+				try:
 					attr_path = os.path.join(output_dir, member.name)
 					original_file = attr_path[:-38]  # Rimuove sia .attr che .{hash}
 					with open(attr_path, 'r') as f:
 						attr_data = json.load(f)
 						set_attributes(original_file, attr_data)
-				#except Exception as exc:
-				#	txt=(f"Errore nel gestire gli attributi di {original_file}: {exc}")
-				#	almsg=BMessage(714)
-				#	almsg.AddString("error",txt)
-				#	be_app.WindowAt(0).PostMessage(almsg)
-				#os.remove(attr_path)
-					os.remove(attr_path)
+				except Exception as exc:
+					txt=(f"Errore nel gestire gli attributi di {original_file}: {exc}")
+					almsg=BMessage(714)
+					almsg.AddString("error",txt)
+					be_app.WindowAt(0).PostMessage(almsg)
+				os.remove(attr_path)
 			if member.name.endswith('.TMZchecksum'):
 				try:
-					checksum_path = os.path.join(output_dir, member.name)
-					original_file = checksum_path[:-12]
-					with open(checksum_path, 'r') as f:
-						svdchksum=f.read()
-					with open(original_file, 'rb') as f:
-						data=f.read()
-						actchksum=get_bytes_md5(data)
-					print("saved",svdchksum)
-					print("actual",actchksum)
-					if actchksum==svdchksum:
-						print("checksum OK")
-					else:
-						print("checksum FAILED")
+					if check_hash:
+						checksum_path = os.path.join(output_dir, member.name)
+						original_file = checksum_path[:-12]
+						with open(checksum_path, 'r') as f:
+							svdchksum=f.read()
+						with open(original_file, 'rb') as f:
+							data=f.read()
+							actchksum=get_bytes_md5(data)
+						print("saved",svdchksum)
+						print("actual",actchksum)
+						if actchksum==svdchksum:
+							print("checksum OK")
+						else:
+							print("checksum FAILED")
 				except Exception as exc:
 					txt=(f"Errore nel gestire i checksum: {exc}")
 					almsg=BMessage(714)
@@ -1704,20 +1804,22 @@ def process_file(attr_path):
 		os.remove(attr_path)
 		
 def check_file(checksum_path):
+	global check_hash
 	original_file = checksum_path[:-12]
 	ent=BEntry(original_file)
 	if ent.Exists():
-		with open(checksum_path, 'r') as f:
-			svdchksum=f.read()
-		with open(original_file, 'rb') as f:
-			data=f.read()
-			actchksum=get_bytes_md5(data)
-		print("saved",svdchksum)
-		print("actual",actchksum)
-		if actchksum==svdchksum:
-			print("checksum OK")
-		else:
-			print("checksum FAILED")
+		if check_hash:
+			with open(checksum_path, 'r') as f:
+				svdchksum=f.read()
+			with open(original_file, 'rb') as f:
+				data=f.read()
+				actchksum=get_bytes_md5(data)
+			print("saved",svdchksum)
+			print("actual",actchksum)
+			if actchksum==svdchksum:
+				print("checksum OK")
+			else:
+				print("checksum FAILED")
 		os.remove(checksum_path)
 
 class App(BApplication):
