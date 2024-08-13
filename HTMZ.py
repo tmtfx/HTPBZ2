@@ -25,7 +25,7 @@ Config=configparser.ConfigParser()
 global ver,status,rev
 ver="1"
 status="beta"
-rev="20240812"
+rev="20240813"
 author="Fabio Tomat"
 
 def ConfigSectionMap(section):
@@ -137,7 +137,6 @@ class CompressView(BView):
 		self.checksumbox.AddChild(self.cmplvl_value,None)
 		txt="Save checksums in archives"
 		self.ckb_savesum=BCheckBox(BRect(4,4,38+self.StringWidth(txt),font_height_value.ascent+8),"save_chksum",txt,BMessage(1600))
-		#self.ckb_savesum.SetEnabled(0)
 		self.checksumbox.AddChild(self.ckb_savesum,None)
 		r=BRect(4,fon.Size()+12,bounds.right-12,fon.Size()*2+20)
 		self.BlkSz=BTextControl(r,"block_size_txt","Block size:",str(block_size),BMessage(1324))
@@ -208,7 +207,6 @@ class DecompressView(BView):
 		self.GetFontHeight(fon_height_value)
 		txt="Check files on extraction"
 		self.ckb_checksum=BCheckBox(BRect(4,4,38+self.StringWidth(txt),8+fon.Size()),"check_sum",txt,BMessage(1700))
-		self.ckb_checksum.SetEnabled(0)
 		self.checksumbox.AddChild(self.ckb_checksum,None)
 		uwu=self.StringWidth("Tar management:")+10
 		if experimental:
@@ -1039,8 +1037,8 @@ class HTPBZ2Window(BWindow):
 		return BWindow.QuitRequested(self)
 
 def launch_extractions(paths,outputxt,autoclose,inram=False):
-#	global alerts
-#	try:
+	#global alerts
+	#try:
 		for path in paths:
 			txt="Decompressing BZip2 file..."
 			pmsg=BMessage(807)
@@ -1052,12 +1050,12 @@ def launch_extractions(paths,outputxt,autoclose,inram=False):
 			decompress_archive(path, complout,inram=inram)
 		if autoclose:
 			be_app.WindowAt(0).PostMessage(B_QUIT_REQUESTED)
-#	except Exception as e:
-#		txt="Error: "+str(e)
-#		alert= BAlert('Ops', txt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_STOP_ALERT)
-#		alerts.append(alert)
-#		alert.Go()
-#		be_app.WindowAt(0).PostMessage(BMessage(107))
+	#except Exception as e:
+	#	txt="Error: "+str(e)
+	#	alert= BAlert('Ops', txt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_STOP_ALERT)
+	#	alerts.append(alert)
+	#	alert.Go()
+	#	be_app.WindowAt(0).PostMessage(BMessage(107))
 
 def get_str_md5(txt):
 	return hashlib.md5(txt.encode('utf-8')).hexdigest()
@@ -1158,7 +1156,7 @@ def parallel_compress_in_ram_file(input_data, output_file, block_size=1024*1024,
 			f.write(compressed_block)
 
 def add_attributes_to_tar(tar, path,cutter,md5_file=None):
-	global save_hash,endianness,save_hash
+	global save_hash,endianness
 	nf=BNode(path)
 	try:
 		attributes=attr(nf)
@@ -1336,7 +1334,7 @@ def create_tar_with_attributes(input_paths, tar_file):
 									md5_returned = get_bytes_md5(data)
 							else:
 								md5_returned=None
-							add_attributes_to_tar(tar, file_path,cutter)
+							add_attributes_to_tar(tar, file_path,cutter,md5_returned)
 
 def create_tarbz2_with_attributes(input_paths, out_file,compresslevel=9):
 		global save_hash
@@ -1471,11 +1469,11 @@ def set_attributes(file_path, attr_data):
         attr_value = details['value']
         attr_type = details['type']
         attr_size = details['size']
-        if check_hash:
-            try:
-                attr_hash = details['hash']
-            except:
-                check_hash = False
+        # if check_hash:
+        try:
+            attr_hash = details['hash']
+        except:
+            check_hash = False
 
         node = BNode(file_path)
         ck = get_type_string(details['type'])
@@ -1483,88 +1481,72 @@ def set_attributes(file_path, attr_data):
             attr_value = base64.b64decode(attr_value)
             if check_hash:
                 if get_bytes_md5(attr_value) == attr_hash:
-                    print(file_path, name, "checksum OK")
+                    print(file_path, name, "attribute checksum OK")
                 else:
-                    print(file_path, name, "checksum Failed")
+                    print(file_path, name, "attribute checksum Failed")
         elif ck == 'LONG':
             attr_value = int(attr_value)
             attr_value = attr_value.to_bytes(4, byteorder=endianness)
             if check_hash:
                 if get_bytes_md5(attr_value) == attr_hash:
-                    print(file_path, name, "checksum OK")
+                    print(file_path, name, "attribute checksum OK")
                 else:
-                    print(file_path, name, "checksum Failed")
+                    print(file_path, name, "attribute checksum Failed")
         elif ck == 'LLNG':
             attr_value = int(attr_value)
             attr_value = attr_value.to_bytes(8, byteorder=endianness)
             if check_hash:
                 if get_bytes_md5(attr_value) == attr_hash:
-                    print(file_path, name, "checksum OK")
+                    print(file_path, name, "attribute checksum OK")
                 else:
-                    print(file_path, name, "checksum Failed")
+                    print(file_path, name, "attribute checksum Failed")
         elif ck == 'TIME':
             if check_hash:
                 if get_bytes_md5(int(attr_value).to_bytes(8, byteorder=endianness)) == attr_hash:
-                    print(file_path, name, "checksum OK")
+                    print(file_path, name, "attribute checksum OK")
                 else:
-                    print(file_path, name, "checksum Failed")
+                    print(file_path, name, "attribute checksum Failed")
             attr_value = int(attr_value).to_bytes(8, byteorder=endianness)
         elif ck == 'CSTR' or ck == 'MIMS':
             attr_value = str.encode(attr_value)
             if check_hash:
-                if get_str_md5(attr_value) == attr_hash:
-                    print(file_path, name, "checksum OK")
+                if get_bytes_md5(attr_value) == attr_hash:
+                    print(file_path, name, "attribute checksum OK")
                 else:
-                    print(file_path, name, "checksum Failed")
+                    print(file_path, name, "attribute checksum Failed")
         elif ck == 'BOOL':
             attr_value = bytes(attr_value, 'utf-8')
             if check_hash:
                 if get_bytes_md5(attr_value) == attr_hash:
-                    print(file_path, name, "checksum OK")
+                    print(file_path, name, "attribute checksum OK")
                 else:
-                    print(file_path, name, "checksum Failed")
+                    print(file_path, name, "attribute checksum Failed")
         elif ck == 'FLOT':
             attr_value = base64.b64decode(attr_value)
             if check_hash:
                 if get_bytes_md5(attr_value) == attr_hash:
-                    print(file_path, name, "checksum OK")
+                    print(file_path, name, "attribute checksum OK")
                 else:
-                    print(file_path, name, "checksum Failed")
+                    print(file_path, name, "attribute checksum Failed")
         elif ck == 'DBLE':
             attr_value = base64.b64decode(attr_value)
             if check_hash:
                 if get_bytes_md5(attr_value) == attr_hash:
-                    print(file_path, name, "checksum OK")
+                    print(file_path, name, "attribute checksum OK")
                 else:
-                    print(file_path, name, "checksum Failed")
+                    print(file_path, name, "attribute checksum Failed")
         else:
             attr_value = base64.b64decode(attr_value)
             if check_hash:
                 if get_bytes_md5(attr_value) == attr_hash:
-                    print(file_path, name, "checksum OK")
+                    print(file_path, name, "attribute checksum OK")
                 else:
-                    print(file_path, name, "checksum Failed")
+                    print(file_path, name, "attribute checksum Failed")
         node.WriteAttr(name, attr_type, 0, attr_value)
 
 
 def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False,num_workers=None):
 	global parallelization,almsg
-#	if parallelization == 0:
-#		if inram:
-#			print("decompressione in ram parallelizzata")
-#		else:
-#			print("decompressione su disco parallelizzata")
-#	elif parallelization == 1:
-#		if inram:
-#			print("decompressione in ram parallelizzata in lotti")
-#		else:
-#			print("decompressione su disco parallelizzata in lotti")
-#	elif parallelization == 3:
-#		if inram:
-#			print("decompressione in ram seriale in unico thread")
-#		else:
-#			print("decompressione su disco seriale in unico thread")
-#
 	if parallelization!=2:
 		if inram:
 			tar_file = "/boot/system/var/shared_memory/"+os.path.basename(input_file) + '.tar'
@@ -1641,18 +1623,41 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 		tar_data.extractall(path=output_dir)
 		for member in tar_data.getmembers():
 			if member.name.endswith('.attr'):
-				try:
+				#try:
 					attr_path = os.path.join(output_dir, member.name)
 					original_file = attr_path[:-38]  # Rimuove sia .attr che .{hash}
 					with open(attr_path, 'r') as f:
 						attr_data = json.load(f)
 						set_attributes(original_file, attr_data)
-				except Exception as exc:
-					txt=(f"Errore nel gestire gli attributi: {exc}")
-					almsg=BMessage(714)
-					almsg.AddString("error",txt)
-					be_app.WindowAt(0).PostMessage(almsg)
-				os.remove(attr_path)
+				#except Exception as exc:
+				#	txt=(f"Errore nel gestire gli attributi di {original_file}: {exc}")
+				#	almsg=BMessage(714)
+				#	almsg.AddString("error",txt)
+				#	be_app.WindowAt(0).PostMessage(almsg)
+				#os.remove(attr_path)
+					os.remove(attr_path)
+			if member.name.endswith('.TMZchecksum'):
+				#try:
+					checksum_path = os.path.join(output_dir, member.name)
+					original_file = checksum_path[:-12]
+					with open(checksum_path, 'r') as f:
+						svdchksum=f.read()
+					with open(original_file, 'rb') as f:
+						data=f.read()
+						actchksum=get_bytes_md5(data)
+					print("saved",svdchksum)
+					print("actual",actchksum)
+					if actchksum==svdchksum:
+						print("checksum OK")
+					else:
+						print("checksum FAILED")
+				#except Exception as exc:
+				#	txt=(f"Errore nel gestire i checksum: {exc}")
+				#	almsg=BMessage(714)
+				#	almsg.AddString("error",txt)
+				#	be_app.WindowAt(0).PostMessage(almsg)
+				#os.remove(attr_path)
+					os.remove(checksum_path)
 ######## Secuential extraction and assignement of extra attributes ########
 	elif parallelization==3:
 	### serial - single thread: experimental - differences in output size - todo: check diffs ###
