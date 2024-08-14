@@ -25,7 +25,7 @@ Config=configparser.ConfigParser()
 global ver,status,rev
 ver="1"
 status="beta"
-rev="20240813"
+rev="20240814"
 author="Fabio Tomat"
 
 def ConfigSectionMap(section):
