@@ -19,6 +19,7 @@ from Be.Slider import hash_mark_location
 from Be.TypeConstants import *
 from pathlib import Path
 from threading import Thread
+import subprocess
 
 Config=configparser.ConfigParser()
 global ver,status,rev
@@ -1057,7 +1058,11 @@ class ReportWindow(BWindow):
 	def MessageReceived(self, msg):
 		global reps
 		if msg.what == 53:
-			pass
+			it=self.Reports.lv.ItemAt(self.Reports.lv.CurrentSelection())
+			#pth=it.filename
+			parent=Path(it.filename).parent
+			#print(it.filename,parent)
+			subprocess.run(["open", parent])
 		elif msg.what == 12345:
 			txt=msg.FindString("testo")
 			self.Reports.lv.AddItem(BStringItem(txt))
@@ -1067,9 +1072,37 @@ class ReportWindow(BWindow):
 			result=msg.FindBool("result")
 			reps.append(ReportAttribItem(fileno,attrib,result))
 			self.Reports.lv.AddItem(reps[-1])
+		elif msg.what == 51423:
+			fileno=msg.FindString("fileno")
+			result=msg.FindBool("result")
+			reps.append(ReportItem(fileno,result))
+			self.Reports.lv.AddItem(reps[-1])
 		return BWindow.MessageReceived(self,msg)
+		
 	def FrameResized(self,x,y):
 		self.ResizeTo(800,self.deltay)
+class ReportItem(BListItem):
+	def __init__(self,filename,result):
+		self.result=result
+		self.filename=filename
+		self.fon=BFont()
+		self.font_height_value=font_height()
+		self.fon.GetHeight(self.font_height_value)
+		BListItem.__init__(self)
+	def DrawItem(self, owner, frame, complete):
+		if self.result:
+			owner.SetHighColor(0,255,0,255)
+		else:
+			owner.SetHighColor(255,0,0,255)
+		owner.SetLowColor(0,0,0,0)
+		if self.IsSelected() or complete:
+			owner.SetHighColor(200,200,200,255)
+			owner.SetLowColor(200,200,200,255)
+		owner.FillRect(frame)
+		owner.SetHighColor(255,255,255,0)
+		owner.MovePenTo(frame.left+5,frame.bottom-self.font_height_value.descent)
+		owner.DrawString(self.filename,None)
+		owner.SetLowColor(255,255,255,255)
 class ReportAttribItem(BListItem):
 	def __init__(self,filename,attribute,result):
 		self.result=result
@@ -1747,18 +1780,22 @@ def decompress_archive(input_file, output_dir, block_size=1024*1024, inram=False
 						with open(original_file, 'rb') as f:
 							data=f.read()
 							actchksum=get_bytes_md5(data)
-						print("saved",svdchksum)
-						print("actual",actchksum)
+						almsg=BMessage(51423)
+						almsg.AddString("fileno",original_file)
 						if actchksum==svdchksum:
-							print("checksum OK")
+							almsg.AddBool("result",True)
 						else:
-							print("checksum FAILED")
+							almsg.AddBool("result",False)
 				except Exception as exc:
 					txt=(f"Errore nel gestire i checksum: {exc}")
 					almsg=BMessage(714)
 					almsg.AddString("error",txt)
 					be_app.WindowAt(0).PostMessage(almsg)
 				os.remove(checksum_path)
+				if check_hash:
+					for w in alerts:
+						if type(w)==ReportWindow:
+							w.PostMessage(almsg)
 ######## Secuential extraction and assignement of extra attributes ########
 	elif parallelization==3:
 	### serial - single thread: experimental - differences in output size - todo: check diffs ###
@@ -1814,12 +1851,15 @@ def check_file(checksum_path):
 			with open(original_file, 'rb') as f:
 				data=f.read()
 				actchksum=get_bytes_md5(data)
-			print("saved",svdchksum)
-			print("actual",actchksum)
+			almsg=BMessage(51423)
+			almsg.AddString("fileno",original_file)
 			if actchksum==svdchksum:
-				print("checksum OK")
+				almsg.AddBool("result",True)
 			else:
-				print("checksum FAILED")
+				almsg.AddBool("result",False)
+			for w in alerts:
+				if type(w)==ReportWindow:
+					w.PostMessage(almsg)
 		os.remove(checksum_path)
 
 class App(BApplication):
