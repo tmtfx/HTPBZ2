@@ -1,5 +1,7 @@
 #!/bin/bash
 
+pkgman install -y python3.10
+
 echo "Do you wish to git clone & compile Haiku-PyAPI to your system? (type y or n)"
 read text
 if [ $text == "y" ]
