@@ -671,13 +671,23 @@ class SettingsWindow(BWindow):
 					endof=True
 					break
 			if endof:
-				saytxt="Handling wrong configuration, ignoring"
+				saytxt="Handling wrong configuration, ignoring, not found"
 				alert= BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
 				alerts.append(alert)
 				alert.Go()
 				return
-			self.cmplvl_value=self.boxview.ChildAt(self.boxview.CountChildren()-4)
-			if type(self.cmplvl_value)!=BStringView:
+			#self.cmplvl_value=self.boxview.ChildAt(self.boxview.CountChildren()-4)
+			b=self.boxview.ChildAt(0)
+			endof=False
+			while True:
+				if type(b)==BStringView:
+					self.cmplvl_value=b
+					break
+				b=b.NextSibling()
+				if b == None:
+					endof=True
+					break
+			if endof:
 				saytxt="Handling wrong configuration, ignoring"
 				alrt= BAlert('Ops', saytxt, 'Ok', None,None,InterfaceDefs.B_WIDTH_AS_USUAL,alert_type.B_WARNING_ALERT)
 				alerts.append(alrt)
